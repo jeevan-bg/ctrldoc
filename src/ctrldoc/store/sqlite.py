@@ -115,6 +115,37 @@ class SQLiteStore:
     ) -> None:
         self.close()
 
+    # --- integrity + backup (§4.7 index integrity) ---
+
+    def verify_integrity(self) -> None:
+        """Run `PRAGMA integrity_check` on demand. Raises on failure."""
+        self._integrity_check()
+
+    def backup(self) -> Path:
+        """Snapshot the live database to `<path>.bak` using SQLite's online
+        backup API. Returns the path of the snapshot. Overwrites a prior
+        snapshot.
+        """
+        target = self._path.with_suffix(self._path.suffix + ".bak")
+        if target.exists():
+            target.unlink()
+        with sqlite3.connect(target) as dst:
+            self._conn.backup(dst)
+        return target
+
+    def clear_all(self) -> None:
+        """Destructive: truncate every data table after taking a backup.
+
+        The `meta` table (versions) is preserved so an emptied index
+        remains openable without re-bootstrapping the schema.
+        """
+        self.backup()
+        with self._conn:
+            self._conn.execute("DELETE FROM chunks")
+            self._conn.execute("DELETE FROM sections")
+            self._conn.execute("DELETE FROM entities")
+            self._conn.execute("DELETE FROM mentions")
+
     # --- protocol ---
 
     @property
