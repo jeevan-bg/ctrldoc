@@ -15,6 +15,7 @@ Row format:
 | §X.Y | Slice | Source files | Test files | Status |
 |---|---|---|---|---|
 | §3 (architecture) | S-001 .. S-103 | src/ctrldoc/ | tests/ | partial |
+| §12 (build order) | S-001 | (toolchain) | tests/test_toolchain.py | covered |
 | §4.0 (data model) | S-010..S-013 | src/ctrldoc/models.py | tests/test_models.py | pending |
 | §4.1 (ingest) | S-030..S-039 | src/ctrldoc/ingest/ | tests/test_ingest_*.py | pending |
 | §4.2 (multi-view index) | S-020..S-026 | src/ctrldoc/store/ | tests/test_store_*.py | pending |
