@@ -57,5 +57,31 @@ class InMemoryStore:
     def iter_entities(self) -> Iterator[Entity]:
         return iter(self._entities.values())
 
+    # --- entity inverted-index lookups ---
+
+    def chunks_for_entity(self, entity_id: str) -> list[str]:
+        entity = self._entities.get(entity_id)
+        if entity is None:
+            return []
+        return list(entity.mention_chunk_ids)
+
+    def entities_for_chunk(self, chunk_id: str) -> list[str]:
+        return [
+            entity.id for entity in self._entities.values() if chunk_id in entity.mention_chunk_ids
+        ]
+
+    def entity_neighbors(self, entity_id: str) -> list[str]:
+        source = self._entities.get(entity_id)
+        if source is None:
+            return []
+        source_chunks = set(source.mention_chunk_ids)
+        neighbors: set[str] = set()
+        for other in self._entities.values():
+            if other.id == entity_id:
+                continue
+            if source_chunks.intersection(other.mention_chunk_ids):
+                neighbors.add(other.id)
+        return sorted(neighbors)
+
 
 __all__ = ["InMemoryStore"]

@@ -204,6 +204,35 @@ class SQLiteStore:
         for row in self._conn.execute("SELECT * FROM entities"):
             yield self._hydrate_entity(row)
 
+    # --- entity inverted-index lookups ---
+
+    def chunks_for_entity(self, entity_id: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT chunk_id FROM mentions WHERE entity_id = ? ORDER BY chunk_id",
+            (entity_id,),
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def entities_for_chunk(self, chunk_id: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT entity_id FROM mentions WHERE chunk_id = ? ORDER BY entity_id",
+            (chunk_id,),
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def entity_neighbors(self, entity_id: str) -> list[str]:
+        rows = self._conn.execute(
+            """
+            SELECT DISTINCT m2.entity_id
+            FROM mentions m1
+            JOIN mentions m2 ON m1.chunk_id = m2.chunk_id
+            WHERE m1.entity_id = ? AND m2.entity_id != m1.entity_id
+            ORDER BY m2.entity_id
+            """,
+            (entity_id,),
+        ).fetchall()
+        return [row[0] for row in rows]
+
     # --- internals ---
 
     def _integrity_check(self) -> None:
