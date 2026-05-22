@@ -25,6 +25,8 @@ class BM25Index(Protocol):
 
     def add(self, chunk_id: str, text: str) -> None: ...
 
+    def remove(self, chunk_id: str) -> None: ...
+
     def search(self, query: str, *, k: int) -> list[BM25Hit]: ...
 
 
@@ -84,6 +86,12 @@ class TantivyBM25Index:
         doc.add_text(self._CHUNK_ID_FIELD, chunk_id)
         doc.add_text(self._BODY_FIELD, text)
         writer.add_document(doc)
+        writer.commit()
+        self._index.reload()
+
+    def remove(self, chunk_id: str) -> None:
+        writer = self._ensure_writer()
+        writer.delete_documents(self._CHUNK_ID_FIELD, chunk_id)
         writer.commit()
         self._index.reload()
 
