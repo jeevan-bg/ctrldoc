@@ -1,6 +1,7 @@
 # ctrldoc — git ignore rules
 # IMPORTANT: .ctrldoc/ holds internal build/process state and is NEVER committed.
 .ctrldoc/
+.claude/
 
 # Python
 __pycache__/
