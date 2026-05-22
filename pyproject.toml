@@ -55,6 +55,7 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.10",
   "pre-commit>=3.7",
+  "pymupdf4llm>=0.0.17",
 ]
 
 [project.scripts]
