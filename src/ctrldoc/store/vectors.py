@@ -31,6 +31,8 @@ class VectorIndex(Protocol):
 
     def add(self, chunk_id: str, embedding: Sequence[float]) -> None: ...
 
+    def remove(self, chunk_id: str) -> None: ...
+
     def search(self, query: Sequence[float], *, k: int) -> list[VectorHit]: ...
 
     def iter(self) -> Iterator[tuple[str, list[float]]]: ...
@@ -59,6 +61,9 @@ class InMemoryVectorIndex:
         self._check_dim(embedding, "add")
         vec = list(map(float, embedding))
         self._vectors[chunk_id] = (vec, _norm(vec))
+
+    def remove(self, chunk_id: str) -> None:
+        self._vectors.pop(chunk_id, None)
 
     def search(self, query: Sequence[float], *, k: int) -> list[VectorHit]:
         if k < 0:

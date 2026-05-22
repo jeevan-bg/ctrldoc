@@ -251,6 +251,20 @@ class SQLiteStore:
         ).fetchall()
         return [row[0] for row in rows]
 
+    def delete_chunks_for_section(self, section_id: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT id FROM chunks WHERE section_id = ? ORDER BY id",
+            (section_id,),
+        ).fetchall()
+        chunk_ids = [row[0] for row in rows]
+        with self._conn:
+            self._conn.execute("DELETE FROM chunks WHERE section_id = ?", (section_id,))
+        return chunk_ids
+
+    def delete_section(self, section_id: str) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM sections WHERE id = ?", (section_id,))
+
     def entity_neighbors(self, entity_id: str) -> list[str]:
         rows = self._conn.execute(
             """

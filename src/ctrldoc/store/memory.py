@@ -83,5 +83,18 @@ class InMemoryStore:
                 neighbors.add(other.id)
         return sorted(neighbors)
 
+    # --- destructive ops ---
+
+    def delete_chunks_for_section(self, section_id: str) -> list[str]:
+        to_remove = [
+            chunk_id for chunk_id, chunk in self._chunks.items() if chunk.section_id == section_id
+        ]
+        for chunk_id in to_remove:
+            del self._chunks[chunk_id]
+        return to_remove
+
+    def delete_section(self, section_id: str) -> None:
+        self._sections.pop(section_id, None)
+
 
 __all__ = ["InMemoryStore"]
