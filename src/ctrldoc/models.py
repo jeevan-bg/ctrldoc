@@ -10,6 +10,9 @@ SPEC-REF: §4.0 (data model)
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import TypeAlias
+
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, model_validator
 
 
@@ -65,4 +68,33 @@ class Span(_Strict):
         return self
 
 
-__all__ = ["Chunk", "Section", "Span"]
+class Entity(_Strict):
+    """A canonicalised mention cluster — one row in the entity glossary."""
+
+    id: str
+    aliases: list[str]
+    type: str
+    mention_chunk_ids: list[str]
+
+
+EntityGlossary: TypeAlias = dict[str, Entity]
+
+
+def build_entity_glossary(entities: Iterable[Entity]) -> EntityGlossary:
+    """Index `entities` by their canonical id. Raises on duplicate ids."""
+    glossary: EntityGlossary = {}
+    for entity in entities:
+        if entity.id in glossary:
+            raise ValueError(f"duplicate entity id in glossary: {entity.id!r}")
+        glossary[entity.id] = entity
+    return glossary
+
+
+__all__ = [
+    "Chunk",
+    "Entity",
+    "EntityGlossary",
+    "Section",
+    "Span",
+    "build_entity_glossary",
+]
