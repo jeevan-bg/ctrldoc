@@ -29,6 +29,7 @@ Row format:
 | §4.1 (semantic chunker) | S-033 | src/ctrldoc/ingest/chunker.py | tests/test_chunker.py | covered |
 | §4.1 (coref — interface) | S-034 | src/ctrldoc/ingest/coref.py | tests/test_coref.py | covered |
 | §4.1 (coref — fastcoref backend) | S-034b | src/ctrldoc/ingest/coref.py | tests/test_coref.py | blocked |
+| §4.1 (NER + canonicalisation) | S-035 | src/ctrldoc/ingest/ner.py, src/ctrldoc/ingest/ner_gliner.py | tests/test_ner.py, tests/test_ner_gliner.py | covered |
 | §4.2 (multi-view index) | S-020..S-026 | src/ctrldoc/store/ | tests/test_store_*.py | partial |
 | §10/§13 (Store protocol) | S-020 | src/ctrldoc/store/__init__.py, src/ctrldoc/store/memory.py | tests/test_store.py | covered |
 | §4.2 (SQLite tables) | S-021 | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | covered |
