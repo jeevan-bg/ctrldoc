@@ -26,6 +26,8 @@ Row format:
 | §4.2 (multi-view index) | S-020..S-026 | src/ctrldoc/store/ | tests/test_store_*.py | partial |
 | §10/§13 (Store protocol) | S-020 | src/ctrldoc/store/__init__.py, src/ctrldoc/store/memory.py | tests/test_store.py | covered |
 | §4.2 (SQLite tables) | S-021 | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | covered |
+| §4.2 (dense vectors — interface) | S-022 | src/ctrldoc/store/vectors.py | tests/test_vector_index.py | covered |
+| §4.2 (dense vectors — sqlite-vec) | S-022b | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | blocked |
 | §4.3 (retrieval) | S-040..S-046 | src/ctrldoc/retrieval/ | tests/test_retrieval_*.py | pending |
 | §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | pending |
 | §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
