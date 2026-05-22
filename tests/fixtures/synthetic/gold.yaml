@@ -1,0 +1,170 @@
+# Ground-truth annotations for the Aurora synthetic gold document.
+# This file is the authoritative oracle for end-to-end playbook tests.
+# Every assertion is machine-checkable.
+
+doc: gold_doc.md
+doc_token_count_approx: 1100
+sections:
+  - id: "§1"
+    title: "Overview"
+  - id: "§2"
+    title: "Architecture"
+    children: ["§2.1", "§2.2"]
+  - id: "§3"
+    title: "Consistency Model"
+    children: ["§3.1", "§3.2"]
+  - id: "§4"
+    title: "Fault Tolerance"
+  - id: "§5"
+    title: "Security"
+  - id: "§6"
+    title: "Performance"
+  - id: "§7"
+    title: "Operations"
+    children: ["§7.1", "§7.2"]
+  - id: "§8"
+    title: "Glossary"
+
+# UC1 — Trustworthy QA
+qa:
+  answerable:
+    - q: "Which component handles consistent-hash routing?"
+      expected_contains: ["ShardRing"]
+      must_cite_section: "§2.1"
+    - q: "What is the default consistency model for reads?"
+      expected_contains: ["eventually consistent"]
+      must_cite_section: "§3.1"
+    - q: "How long does GossipBus take to detect a node failure?"
+      expected_contains: ["3 gossip rounds", "600ms"]
+      must_cite_section: "§4"
+    - q: "What is the default replication factor?"
+      expected_contains: ["N=3", "3"]
+      must_cite_section: "§2.2"
+    - q: "What is the P99 read latency target?"
+      expected_contains: ["5ms"]
+      must_cite_section: "§6"
+  refusal:
+    - q: "What is the capital of Mars?"
+      expected: REFUSAL
+    - q: "Who founded Aurora Inc?"
+      expected: REFUSAL
+    - q: "What is the TLS cipher suite used between nodes?"
+      expected: REFUSAL
+    - q: "What is the wire-format byte layout of a ClientToken?"
+      expected: REFUSAL
+
+# UC2 — Coverage audit (Aurora doc vs. a fictional threat checklist).
+coverage:
+  checklist:
+    - id: "T1"
+      requirement: "System describes authentication mechanism for clients."
+      expected_verdict: "Covered"
+      must_cite_section: "§5"
+    - id: "T2"
+      requirement: "System defines the format of authentication credentials."
+      expected_verdict: "NotCovered"
+    - id: "T3"
+      requirement: "System describes inter-node encryption."
+      expected_verdict: "Covered"
+      must_cite_section: "§5"
+    - id: "T4"
+      requirement: "System addresses token rotation policy."
+      expected_verdict: "Partial"
+      must_cite_section: "§5"
+    - id: "T5"
+      requirement: "System provides multi-key transaction guarantees."
+      expected_verdict: "NotCovered"
+    - id: "T6"
+      requirement: "System describes behavior under majority replica loss."
+      expected_verdict: "Covered"
+      must_cite_section: "§4"
+
+# UC3 — Quality audit. Expected criteria the generator should propose for a
+# distributed-systems spec. Used to test criteria generation; we only check
+# that at least these criteria appear.
+quality_criteria_expected:
+  - "consistency model is explicitly stated"
+  - "failure modes are enumerated"
+  - "authentication mechanism is described"
+  - "performance targets are quantified"
+  - "operational procedures (scale, upgrade) are described"
+
+# UC4 — Analytical review. Seeded findings the system MUST surface.
+analytical_findings_expected:
+  contradictions:
+    - section_a: "§3.1"
+      section_b: "§6"
+      topic: "read consistency"
+      description: "§3.1 says reads are eventually consistent by default; §6 lists linearizable reads as available but only to opt-in clients — confirm the framing is consistent."
+  scope_gaps:
+    - description: "Token format and signature algorithm are explicitly out of scope; flagged as a documentation completeness gap."
+      related_section: "§5"
+    - description: "Certificate provisioning is out of scope for inter-node mTLS."
+      related_section: "§5"
+  ambiguities:
+    - description: "'usually' and 'typically' appear near security claims."
+      related_section: "§5"
+
+# UC5 — Anomaly scan. Each detector should at minimum surface these.
+anomalies_expected:
+  hedge_words_near_security:
+    - section: "§5"
+      patterns_present: ["typically", "should usually", "may"]
+  undefined_terms:
+    - term: "SWIM"
+      reason: "Used in §2.1 without expansion or definition."
+  justification_gaps:
+    - section: "§6"
+      claim: "Memory overhead per cached entry is approximately 64 bytes."
+      reason: "Asserted without derivation or measurement reference."
+
+# UC6 — Relation map. Concept pairs and their expected edge types.
+relations_expected:
+  concepts:
+    - "NodeManager"
+    - "GossipBus"
+    - "ShardRing"
+    - "CacheStore"
+    - "ClientToken"
+    - "ConsistentHashing"
+  edges:
+    - src: "NodeManager"
+      dst: "GossipBus"
+      type: "depends_on"
+      must_cite_section: "§2.1"
+    - src: "NodeManager"
+      dst: "ShardRing"
+      type: "depends_on"
+      must_cite_section: "§2.1"
+    - src: "ShardRing"
+      dst: "ConsistentHashing"
+      type: "refines"
+      must_cite_section: "§2.1"
+    - src: "NodeManager"
+      dst: "CacheStore"
+      type: "depends_on"
+      must_cite_section: "§2.1"
+    - src: "ClientToken"
+      dst: "NodeManager"
+      type: "prerequisite_of"
+      must_cite_section: "§5"
+
+# Entity index expectations.
+entities_expected:
+  - id: "NodeManager"
+    aliases: ["NM", "node manager"]
+  - id: "GossipBus"
+  - id: "ShardRing"
+  - id: "CacheStore"
+  - id: "ClientToken"
+  - id: "Aurora"
+
+# Needle-in-haystack sentinels — the synthetic doc contains these unique strings
+# at specific locations to test retrieval blind spots.
+niah_sentinels:
+  - text: "256 per physical node"
+    section: "§2.1"
+  - text: "P99 read latency under 5ms"
+    section: "§6"
+  - text: "approximately 64 bytes"
+    section: "§6"

@@ -1,0 +1,43 @@
+# ctrldoc — git ignore rules
+# IMPORTANT: .ctrldoc/ holds internal build/process state and is NEVER committed.
+.ctrldoc/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local DB / indexes / runs
+*.db
+*.db.bak
+runs/
+traces/
+lens.db
+ctrldoc.db
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Fixture downloads (kept out of repo to limit size)
+tests/fixtures/downloaded/
