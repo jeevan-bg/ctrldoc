@@ -49,25 +49,6 @@ Every commit message must include a `SPEC-REF: §X.Y` line in the trailer.
 - Update [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]`.
 - If the change introduces or modifies a design choice, add an ADR to [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## Voice and content of public-facing files
-
-Public files (`src/`, `tests/`, `docs/`, `examples/`, `scripts/`, `README`, `CONTRIBUTING`, `CHANGELOG`, `pyproject.toml`, `.github/`) are read by users of the library. They must read as professional engineering documentation.
-
-Avoid in public files:
-
-- References to authoring tools or AI assistants (e.g. names of LLMs, AI vendors, "generated with X").
-- Process metadata that only makes sense to the author (internal development cycles, work-tracking references, "this was decided in …").
-- Co-authorship lines that name automation.
-- Pointers to internal-only paths or decision logs.
-
-Prefer:
-
-- ADRs in `docs/DECISIONS.md` for "why" questions, written for an external reader.
-- Inline code comments only when the *why* is non-obvious; the *what* is in the code itself.
-- Commit messages in [Conventional Commits](https://www.conventionalcommits.org/) style, ending with `SPEC-REF: §X.Y`.
-
-A scanner (`scripts/leak_scan.sh`) enforces a subset of this rule. Reviewers should catch the rest.
-
 ## Reporting issues
 
 Please include:

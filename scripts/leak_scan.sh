@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Public-leak scan: ensure internal/process language does not appear in public files.
-# Fails the build if any forbidden pattern matches outside ignored paths.
+# Repository content linter.
+# Fails the build if any disallowed pattern matches outside ignored paths.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Patterns that must never appear in public files.
-# Case-insensitive whole-word matches where possible.
+# Patterns disallowed in tracked files.
 PATTERNS=(
   "claude code"
   "claude-code"
@@ -29,10 +28,6 @@ PATTERNS=(
   "co-authored-by: claude"
 )
 
-# Patterns that are explicitly ALLOWED (whitelist overrides above).
-# Example: `.ctrldoc` is just a folder name, not sensitive content.
-
-# Public paths to scan (everything except gitignored internal dirs).
 SCAN_PATHS=(
   "src"
   "tests"
@@ -58,7 +53,7 @@ for p in "${PATTERNS[@]}"; do
   for path in "${SCAN_PATHS[@]}"; do
     [ -e "$path" ] || continue
     if grep -rniE "${EXCLUDES[@]}" "$p" "$path" >/dev/null 2>&1; then
-      echo "LEAK: pattern '$p' found in $path:"
+      echo "DISALLOWED: pattern '$p' found in $path:"
       grep -rniE "${EXCLUDES[@]}" "$p" "$path" || true
       FAIL=1
     fi
@@ -67,8 +62,8 @@ done
 
 if [ "$FAIL" -eq 1 ]; then
   echo ""
-  echo "Public-leak scan FAILED. Remove internal/process language from public files."
+  echo "Content lint FAILED. See matches above."
   exit 1
 fi
 
-echo "Public-leak scan OK."
+echo "Content lint OK."

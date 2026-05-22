@@ -40,7 +40,7 @@ jobs:
       - name: Test
         run: pytest -q
 
-      - name: Public-leak scan
+      - name: Content lint
         run: bash scripts/leak_scan.sh
 
   spec-trace:
