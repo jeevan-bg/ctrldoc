@@ -35,6 +35,7 @@ Row format:
 | §4.1/§3.1 (section summariser) | S-037 | src/ctrldoc/ingest/summarizer.py, src/ctrldoc/ingest/summarizer_anthropic.py | tests/test_summarizer.py, tests/test_summarizer_anthropic.py | covered |
 | §4.1 (ingest end-to-end pipeline) | S-038 | src/ctrldoc/ingest/pipeline.py | tests/families/test_ingest_completeness.py | covered |
 | §8.6 family 1 (ingest completeness) | S-038 | src/ctrldoc/ingest/ | tests/families/test_ingest_completeness.py | covered |
+| §4.1 / §8.6 family 13 (incremental update) | S-039 | src/ctrldoc/ingest/pipeline.py, src/ctrldoc/store/ | tests/families/test_incremental_update.py | covered |
 | §4.2 (multi-view index) | S-020..S-026 | src/ctrldoc/store/ | tests/test_store_*.py | partial |
 | §10/§13 (Store protocol) | S-020 | src/ctrldoc/store/__init__.py, src/ctrldoc/store/memory.py | tests/test_store.py | covered |
 | §4.2 (SQLite tables) | S-021 | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | covered |
