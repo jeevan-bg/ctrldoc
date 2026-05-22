@@ -22,7 +22,8 @@ Row format:
 | §4.0 (EvidencePack/Claim/Verdict/Finding/RelationEdge) | S-012 | src/ctrldoc/models.py | tests/test_models_output.py | covered |
 | §4.0 (PlaybookOutput) | S-013 | src/ctrldoc/models.py | tests/test_models_playbook_output.py | covered |
 | §4.7 (versioning / integrity hash) | S-014 | src/ctrldoc/versioning.py | tests/test_versioning.py | covered |
-| §4.1 (ingest) | S-030..S-039 | src/ctrldoc/ingest/ | tests/test_ingest_*.py | pending |
+| §4.1 (ingest) | S-030..S-039 | src/ctrldoc/ingest/ | tests/test_ingest_*.py | partial |
+| §4.1 (Markdown parser) | S-030 | src/ctrldoc/ingest/parser.py | tests/test_parser_markdown.py | covered |
 | §4.2 (multi-view index) | S-020..S-026 | src/ctrldoc/store/ | tests/test_store_*.py | partial |
 | §10/§13 (Store protocol) | S-020 | src/ctrldoc/store/__init__.py, src/ctrldoc/store/memory.py | tests/test_store.py | covered |
 | §4.2 (SQLite tables) | S-021 | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | covered |
