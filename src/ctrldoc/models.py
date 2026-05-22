@@ -11,9 +11,11 @@ SPEC-REF: §4.0 (data model)
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, model_validator
+
+from ctrldoc.provenance import Provenance
 
 UnitInterval = Annotated[float, Field(ge=0.0, le=1.0)]
 """A probability or score in `[0.0, 1.0]`."""
@@ -150,6 +152,22 @@ class Entity(_Strict):
 EntityGlossary: TypeAlias = dict[str, Entity]
 
 
+ResultT = TypeVar("ResultT")
+
+
+class PlaybookOutput(BaseModel, Generic[ResultT]):
+    """The single shape every playbook returns.
+
+    `provenance` is mandatory — a result without provenance has no
+    place to ground reproducibility or audit downstream.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provenance: Provenance
+    result: ResultT
+
+
 def build_entity_glossary(entities: Iterable[Entity]) -> EntityGlossary:
     """Index `entities` by their canonical id. Raises on duplicate ids."""
     glossary: EntityGlossary = {}
@@ -168,6 +186,7 @@ __all__ = [
     "EntityGlossary",
     "EvidencePack",
     "Finding",
+    "PlaybookOutput",
     "RelationEdge",
     "Section",
     "Span",
