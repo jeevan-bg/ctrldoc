@@ -16,7 +16,8 @@ Row format:
 |---|---|---|---|---|
 | §3 (architecture) | S-001 .. S-103 | src/ctrldoc/ | tests/ | partial |
 | §12 (build order) | S-001 | (toolchain) | tests/test_toolchain.py | covered |
-| §4.0 (data model) | S-010..S-013 | src/ctrldoc/models.py | tests/test_models.py | pending |
+| §4.0 (data model) | S-010..S-013 | src/ctrldoc/models.py | tests/test_models_*.py | partial |
+| §4.0 (Chunk/Section/Span) | S-010 | src/ctrldoc/models.py | tests/test_models_chunk_section_span.py | covered |
 | §4.1 (ingest) | S-030..S-039 | src/ctrldoc/ingest/ | tests/test_ingest_*.py | pending |
 | §4.2 (multi-view index) | S-020..S-026 | src/ctrldoc/store/ | tests/test_store_*.py | pending |
 | §4.3 (retrieval) | S-040..S-046 | src/ctrldoc/retrieval/ | tests/test_retrieval_*.py | pending |
