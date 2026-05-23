@@ -125,6 +125,7 @@ Row format:
 | §5.6 + §6 (CLI `map` wired to RelationMapPlaybook, Markdown adjacency + Mermaid graph) | S-117 | src/ctrldoc/cli_map.py, src/ctrldoc/cli.py | tests/test_cli_map.py | covered |
 | §7 / §9 (end-to-end smoke against threat-model corpus + v0.3.0 release) | S-118 | runs/cli_smoke/, scripts/aggregate_smoke.py | runs/cli_smoke/SUMMARY.md | covered |
 | §6.2 + §14 (claim-extraction eval substrate — 120 sentence→tuple pairs, P/R/F1 runner, claim_F1 >= 0.85 gate) | S-119 | src/ctrldoc/eval/claim_extraction.py | tests/test_claim_extraction_eval.py, tests/eval/claim_extraction_eval.jsonl | covered |
+| §6.6 + §14 (cross-doc coverage eval substrate — 12 target/source/per-claim-verdict tuples, accuracy + per-class P/R, per-claim accuracy >= 0.85 gate) | S-120 | src/ctrldoc/eval/cross_doc_coverage.py | tests/test_cross_doc_coverage_eval.py, tests/eval/cross_doc_coverage_eval.jsonl | covered |
 
 ## v1.0 Arc
 
