@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-05-23
+
+### Added
+
+- `ctrldoc qa <query> --target <md>` is wired end-to-end through
+  `QAPlaybook` (UC1). Ingests the target inline, runs the bundle's
+  retriever + planner + executor + RRF + reranker, generates an
+  answer via the `local` task tier, decomposes into atomic claims,
+  and runs each claim through `ClaimVerifier` (NLI + judge with
+  one repair pass).
+- `VerifierRetriever` (`src/ctrldoc/cli_qa.py`) adapts the shared
+  `BundleRetriever` (S-113) to the verifier's `Retriever` protocol.
+  `depth` is currently a no-op for both `normal` and `broad`;
+  documented as a future-widening hook.
+- `render_qa_markdown` renders the Markdown answer + per-claim
+  verification table (verified, confidence, NLI, judge,
+  citations) plus a citation appendix with chunk-id snippets.
+
+### Notes
+
+- Heuristic profile rejected for `qa` (no LLM seam in heuristic).
+- Three obsolete stub-style qa tests removed from
+  `tests/test_cli.py`.
+
 ## [0.2.4] — 2026-05-23
 
 ### Added
