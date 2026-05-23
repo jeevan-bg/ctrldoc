@@ -45,7 +45,8 @@ Row format:
 | §4.2 (entity inverted index) | S-024 | src/ctrldoc/store/{__init__,memory,sqlite}.py | tests/test_store_entity_index.py | covered |
 | §3.1/§4.2 (cacheable prefix) | S-025 | src/ctrldoc/assembler.py | tests/test_skeleton_glossary.py | covered |
 | §4.7 (index integrity + backup) | S-026 | src/ctrldoc/store/sqlite.py | tests/test_store_integrity.py | covered |
-| §4.3 (retrieval) | S-040..S-046 | src/ctrldoc/retrieval/ | tests/test_retrieval_*.py | pending |
+| §4.3 (retrieval) | S-040..S-046 | src/ctrldoc/retrieval/ | tests/test_retrieval_*.py | partial |
+| §4.3 (retrieval DSL) | S-040 | src/ctrldoc/retrieval/dsl.py | tests/test_retrieval_dsl.py | covered |
 | §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | pending |
 | §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
