@@ -50,7 +50,7 @@ Row format:
 | §4.3 (retrieval executor) | S-041 | src/ctrldoc/retrieval/executor.py | tests/test_retrieval_executor.py | covered |
 | §4.3 (Reciprocal Rank Fusion) | S-042 | src/ctrldoc/retrieval/fusion.py | tests/test_retrieval_fusion.py | covered |
 | §4.3 (reranker — interface + refs) | S-043 | src/ctrldoc/retrieval/reranker.py | tests/test_retrieval_reranker.py | covered |
-| §4.3 (reranker — BGE-reranker-v2-m3) | S-043b | src/ctrldoc/retrieval/reranker.py | tests/test_retrieval_reranker.py | queued |
+| §4.3 (reranker — BGE-reranker-v2-m3) | S-043b | src/ctrldoc/retrieval/reranker_bge.py | tests/test_retrieval_reranker_bge.py | covered |
 | §4.3 (evidence pack builder) | S-044 | src/ctrldoc/retrieval/evidence.py | tests/test_evidence_pack.py | covered |
 | §8.6 family 6 (referential integrity, partial) | S-044 | src/ctrldoc/retrieval/evidence.py | tests/test_evidence_pack.py | partial |
 | §4.3 (planner LLM call) | S-045 | src/ctrldoc/retrieval/planner.py, src/ctrldoc/retrieval/planner_anthropic.py | tests/test_planner.py, tests/test_planner_anthropic.py | covered |

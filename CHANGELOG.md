@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-23
+
+Production backend landings behind v0.1.0 protocol seams. The
+substrate is unchanged; the v0.1.0 heuristic references remain in
+place as deterministic baselines, and production wirings opt in
+per call site.
+
+### Added
+
+- **`BGEReranker` (S-043b)** — `BAAI/bge-reranker-v2-m3` cross-encoder
+  behind the existing `Reranker` protocol seam. Lazy model load,
+  joint `(query, candidate.text)` scoring, descending-score
+  truncation to `k`, deterministic ties on input order. Integration
+  tests skip when `transformers` is absent and pull the model
+  on first run (~500 MB cached afterward). Lives in
+  `ctrldoc.retrieval.reranker_bge` so the heuristic refs in
+  `ctrldoc.retrieval.reranker` stay torch-free.
+
 ## [0.1.0] — 2026-05-23
 
 First tagged release. The MVP substrate is in place; LLM-backed
