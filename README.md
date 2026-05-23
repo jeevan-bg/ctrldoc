@@ -17,7 +17,7 @@ Large documents break LLMs in predictable ways:
 
 ## Status
 
-**v0.2.2 — CLI wiring in progress.** Every protocol seam already has a real production backend (see v0.2.0 below); v0.2.x is wiring the typer CLI through the production stack so `ctrldoc ingest / audit / qa / review / scan / map` drives real documents end-to-end with Markdown reports. Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. Production wirings shipped in v0.2.0: `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), `sqlite-vec` (L1 persistent dense-vector index), and `fastcoref` (L0 coreference resolver). See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
+**v0.2.3 — CLI wiring in progress.** Every protocol seam already has a real production backend (see v0.2.0 below); v0.2.x is wiring the typer CLI through the production stack so `ctrldoc ingest / audit / qa / review / scan / map` drives real documents end-to-end with Markdown reports. Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. Production wirings shipped in v0.2.0: `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), `sqlite-vec` (L1 persistent dense-vector index), and `fastcoref` (L0 coreference resolver). See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
 
 ## Install
 
@@ -35,9 +35,10 @@ Requirements: Python 3.11+, macOS or Linux. For local LLM backends (optional): [
 The repo ships a synthetic gold document at `tests/fixtures/synthetic/gold_doc.md` so you can verify the install without any LLM credentials.
 
 ```bash
-# 1. Ingest the synthetic doc — runs the deterministic L0 pipeline
-#    end-to-end and writes index artefacts under ./runs/aurora__*.
-ctrldoc ingest tests/fixtures/synthetic/gold_doc.md \
+# 1. Ingest the synthetic doc under the heuristic profile —
+#    deterministic L0 pipeline end-to-end, no LLM, no Ollama.
+#    Writes the Markdown report + JSON result to ./runs/<run_id>/.
+ctrldoc --profile heuristic ingest tests/fixtures/synthetic/gold_doc.md \
     --output-dir ./runs --doc-id aurora
 
 # 2. Run the deterministic anomaly-scan detectors (hedge words +
@@ -48,7 +49,7 @@ ctrldoc scan
 ctrldoc --help
 ```
 
-Every subcommand emits a JSON envelope on stdout, parseable with `jq`. The QA / audit / review / map subcommands validate their arguments and report `anthropic_key_present` so you know whether you're ready to wire a production backend.
+The `ingest` subcommand writes a Markdown report (`runs/<run_id>/report.md`) plus a structured JSON payload (`runs/<run_id>/result.json`). Pass `--format json` for just JSON, `--format both` for both. The default `--profile thrifty` upgrades the embedder to `bge-m3` via Ollama and persists per-doc SQLite + sqlite-vec at `runs/indexes/<doc_hash>.{db,vec.db}`. The QA / audit / review / map subcommands still emit a stub JSON envelope; the per-playbook wiring lands in S-113 .. S-117.
 
 For end-to-end Python walkthroughs of every UC playbook (deterministic stubs, no API key needed), see [`examples/`](examples/):
 

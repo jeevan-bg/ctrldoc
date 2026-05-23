@@ -28,6 +28,7 @@ runs/
 traces/
 lens.db
 ctrldoc.db
+ctrldoc-index/
 
 # Editor / OS
 .DS_Store
