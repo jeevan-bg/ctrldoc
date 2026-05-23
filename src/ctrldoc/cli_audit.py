@@ -26,11 +26,16 @@ SPEC-REF: §5.2 (coverage audit), §6 (CLI)
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING, TypeVar
+
+from pydantic import BaseModel
 
 from ctrldoc.backends import BackendBundle
 from ctrldoc.models import EvidencePack, Verdict
+from ctrldoc.orch.batch import BatchedTaskInput, BatchItem
+from ctrldoc.orch.task import StatelessTaskRunner, TaskInput, TaskOutputError
 from ctrldoc.playbooks.coverage import ChecklistItem, CoverageReport
 from ctrldoc.retrieval.dsl import render_plan_dsl
 from ctrldoc.retrieval.evidence import build_evidence_pack
@@ -40,6 +45,11 @@ from ctrldoc.retrieval.reranker import Candidate
 from ctrldoc.store import Store
 from ctrldoc.store.bm25 import BM25Index
 from ctrldoc.store.vectors import VectorIndex
+
+if TYPE_CHECKING:
+    from ctrldoc.orch.batch import BatchedTaskRunner  # noqa: F401
+
+_T = TypeVar("_T", bound=BaseModel)
 
 # --- checklist parser ---
 
@@ -201,6 +211,55 @@ def _chunk_text(store: Store, chunk_id: str) -> str:
     return chunk.text if chunk is not None else ""
 
 
+# --- per-item runner shim for small local models ---
+
+
+class SequentialBatchedRunner:
+    """Drop-in shape for ``BatchedTaskRunner.run(batched_input,
+    output_model=...)`` that issues one `StatelessTaskRunner` call
+    per item.
+
+    Local 7B models (Qwen2.5-7B-Q4) often fail to emit the
+    `BatchedTaskRunner`'s strict array shape — they echo input
+    fields back into the per-item output. This shim sidesteps that
+    by giving the model one item at a time with a small focused
+    prompt; the per-item call still goes through the bundle's
+    `local` tier (Ollama) so the budget rule holds. Slower than
+    true batching, but reliable.
+    """
+
+    def __init__(
+        self,
+        *,
+        stateless: StatelessTaskRunner,
+        on_error: Callable[[BatchItem, Exception], BaseModel] | None = None,
+    ) -> None:
+        self._stateless = stateless
+        self._on_error = on_error
+
+    def run(self, task: BatchedTaskInput, *, output_model: type[_T]) -> list[_T]:
+        results: list[_T] = []
+        for item in task.items:
+            single = TaskInput(
+                prefix=task.prefix,
+                evidence_pack=task.evidence_pack,
+                task_input=item.task_input,
+            )
+            try:
+                results.append(self._stateless.run(single, output_model=output_model))
+            except TaskOutputError as exc:
+                if self._on_error is None:
+                    raise
+                fallback = self._on_error(item, exc)
+                if not isinstance(fallback, output_model):
+                    raise TypeError(
+                        f"on_error must return a {output_model.__name__} instance; "
+                        f"got {type(fallback).__name__}"
+                    ) from exc
+                results.append(fallback)
+        return results
+
+
 # --- coverage report renderer ---
 
 
@@ -280,6 +339,7 @@ def render_coverage_markdown(
 
 __all__ = [
     "BundleRetriever",
+    "SequentialBatchedRunner",
     "parse_checklist_markdown",
     "render_coverage_markdown",
 ]

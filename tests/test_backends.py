@@ -214,7 +214,16 @@ def test_thrifty_bundle_uses_local_per_item_backends(tmp_path: Path) -> None:
     assert isinstance(bundle.bm25_index, TantivyBM25Index)
     assert isinstance(bundle.store, SQLiteStore)
     assert isinstance(bundle.coref, FastCorefResolver)
-    assert isinstance(bundle.ner, GLiNERTagger)
+    # NER is `GLiNERTagger` when `gliner` is installed; falls back to
+    # `StubNERTagger` when the package is missing (entity-aware retrieval
+    # then degrades to zero entities — the prefix glossary is empty
+    # but every other seam still works).
+    try:
+        import gliner  # noqa: F401
+
+        assert isinstance(bundle.ner, GLiNERTagger)
+    except ImportError:
+        assert isinstance(bundle.ner, StubNERTagger)
     assert isinstance(bundle.reranker, BGEReranker)
     assert isinstance(bundle.nli_checker, DeBERTaNLIChecker)
     # per-item / per-claim LLM seams: stay cheap
@@ -271,6 +280,13 @@ def test_production_bundle_shares_retrieval_backends_with_thrifty(tmp_path: Path
     assert isinstance(prod.bm25_index, TantivyBM25Index)
     assert isinstance(prod.store, SQLiteStore)
     assert isinstance(prod.coref, FastCorefResolver)
-    assert isinstance(prod.ner, GLiNERTagger)
+    # See note in the thrifty test — NER falls back to StubNERTagger
+    # when `gliner` is missing.
+    try:
+        import gliner  # noqa: F401
+
+        assert isinstance(prod.ner, GLiNERTagger)
+    except ImportError:
+        assert isinstance(prod.ner, StubNERTagger)
     assert isinstance(prod.reranker, BGEReranker)
     assert isinstance(prod.nli_checker, DeBERTaNLIChecker)

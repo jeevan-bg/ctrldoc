@@ -698,11 +698,12 @@ def audit(
     )
     from ctrldoc.cli_audit import (
         BundleRetriever,
+        SequentialBatchedRunner,
         parse_checklist_markdown,
         render_coverage_markdown,
     )
     from ctrldoc.ingest.pipeline import ingest_document
-    from ctrldoc.orch.batch import BatchedTaskRunner
+    from ctrldoc.orch.task import StatelessTaskRunner
     from ctrldoc.playbooks.coverage import CoverageAuditPlaybook
 
     state: CliState = ctx.obj
@@ -774,11 +775,25 @@ def audit(
 
     assert bundle.task_client_router is not None  # guarded by profile check above
     task_client = bundle.task_client_router.for_tier("local")
-    batched_runner = BatchedTaskRunner(client=task_client)
+    stateless_runner = StatelessTaskRunner(client=task_client)
+    # The audit playbook hard-codes its private `_BatchedVerdict` shape;
+    # import it so the fallback can emit a typed instance when a single
+    # Ollama call fails to parse. Without this fallback the whole audit
+    # aborts on the first bad model response.
+    from ctrldoc.orch.batch import BatchItem as _BatchItem
+    from ctrldoc.playbooks.coverage import _BatchedVerdict
+
+    def _audit_fallback(item: _BatchItem, exc: Exception) -> _BatchedVerdict:
+        del item, exc  # documented; surfaced in result.json via `Ambiguous`
+        return _BatchedVerdict(verdict="Ambiguous", confidence=0.0, citation_chunk_ids=[])
+
+    sequential_runner = SequentialBatchedRunner(
+        stateless=stateless_runner, on_error=_audit_fallback
+    )
     playbook = CoverageAuditPlaybook(
         prefix=prefix,
         retriever=retriever,
-        batched_runner=batched_runner,
+        batched_runner=sequential_runner,  # type: ignore[arg-type]
     )
 
     report = playbook.run(items)
@@ -821,16 +836,17 @@ def audit(
 
 
 _COVERAGE_AUDIT_SYSTEM_PROMPT = (
-    "You are a strict coverage auditor. For each checklist item, "
-    "decide whether the EVIDENCE supports it.\n\n"
-    "Return a JSON object mapping `id` → verdict object with this exact "
-    "shape:\n"
+    "You are a strict coverage auditor. You will receive EVIDENCE "
+    "spans from a target document plus one checklist item per call. "
+    "Decide whether the evidence supports the item, and return one "
+    "JSON object with this exact shape:\n"
     '  {"verdict": "Covered"|"Partial"|"NotCovered"|"Ambiguous",\n'
-    '   "confidence": <0.0-1.0>,\n'
-    '   "citation_chunk_ids": [<chunk-id strings copied from EVIDENCE>]}\n\n'
-    "Only cite chunk_ids that appear in the EVIDENCE. Be conservative — "
-    "if the evidence does not directly support the item, mark NotCovered "
-    "or Ambiguous. No prose outside the JSON object."
+    '   "confidence": <number 0.0-1.0>,\n'
+    '   "citation_chunk_ids": [<chunk_id strings copied from EVIDENCE>]}\n\n'
+    "Only cite chunk_ids that literally appear in the EVIDENCE. Be "
+    "conservative — if the evidence does not directly support the "
+    "item, mark NotCovered or Ambiguous. Emit one JSON object only, "
+    "no prose, no code fences."
 )
 
 

@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-23
+
+End-to-end CLI release. Every UC playbook drives real documents
+through the production stack via `ctrldoc <cmd> --profile thrifty
+--target <md>`. The 5-doc smoke run lives at `runs/cli_smoke/`
+with `SUMMARY.md` aggregating per-doc verdict counts.
+
+### Summary table
+
+| Slice | Subcommand → playbook | Module |
+|---|---|---|
+| S-110 | `TaskClient` ← Qwen2.5-7B via Ollama | `src/ctrldoc/orch/task_ollama.py` |
+| S-111 | `BackendBundle` factory + `--profile` selector | `src/ctrldoc/backends.py` |
+| S-112 | `ctrldoc ingest` ← L0 pipeline + sqlite-vec persistence | `src/ctrldoc/cli.py` |
+| S-113 | `ctrldoc audit` ← UC2 `CoverageAuditPlaybook` | `src/ctrldoc/cli_audit.py` |
+| S-114 | `ctrldoc qa` ← UC1 `QAPlaybook` | `src/ctrldoc/cli_qa.py` |
+| S-115 | `ctrldoc review` ← UC4 `AnalyticalReviewPlaybook` | `src/ctrldoc/cli_review.py` |
+| S-116 | `ctrldoc scan` ← UC5 `AnomalyScanPlaybook` | `src/ctrldoc/cli_scan.py` |
+| S-117 | `ctrldoc map` ← UC6 `RelationMapPlaybook` (+ Mermaid) | `src/ctrldoc/cli_map.py` |
+| S-118 | End-to-end smoke against 5 phase-0 docs + this tag | `scripts/aggregate_smoke.py`, `runs/cli_smoke/` |
+
+### Fixes shipped during the smoke
+
+- `OllamaTaskClient` now sets `num_ctx=16384` so the cacheable
+  prefix + evidence pack fits without silent truncation. Default
+  `num_ctx=2048` silently cut the LLM-judge call's view of the
+  doc skeleton; every per-item judge response came back empty
+  before this was raised. Now configurable via constructor.
+- `SequentialBatchedRunner` (in `src/ctrldoc/cli_audit.py`) — a
+  drop-in replacement for `BatchedTaskRunner` that issues one
+  per-item Ollama call instead of one batched call. Local 7B
+  models routinely fail the batched array shape; the sequential
+  shim trades batching for prompt simplicity and accepts a
+  per-item `on_error` callback so one bad parse doesn't abort
+  the whole audit (the smoke uses an `Ambiguous` fallback).
+- `_resolve_optional_ner()` in `backends.py` falls back to
+  `StubNERTagger` when `gliner` isn't installed. Entity-based
+  retrieval degrades gracefully; the rest of the pipeline still
+  works.
+
+### Smoke result
+
+| # | checklist | items | Covered | Partial | NotCovered | Ambiguous |
+|---|---|---:|---:|---:|---:|---:|
+| 01 | `01_adversary_catalog.md` | 16 | 6 | 0 | 10 | 0 |
+| 02 | `02_trust_assumptions.md` | 35 | 4 | 0 | 26 | 5 |
+| 03 | `03_property_catalog.md` | 24 | 7 | 0 | 16 | 1 |
+| 04 | `04_exclusions_and_L1_contract.md` | 60 | 2 | 0 | 45 | 13 |
+| **Total** | | **135** | **19** | **0** | **97** | **19** |
+
+No Anthropic calls fired in any audit (thrifty profile reserves
+Opus for synthesis, which `coverage_audit` does not invoke).
+
 ## [0.2.8] — 2026-05-23
 
 ### Added
