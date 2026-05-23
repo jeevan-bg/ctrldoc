@@ -17,7 +17,7 @@ Large documents break LLMs in predictable ways:
 
 ## Status
 
-**v0.2.6 — CLI wiring in progress.** Every protocol seam already has a real production backend (see v0.2.0 below); v0.2.x is wiring the typer CLI through the production stack so `ctrldoc ingest / audit / qa / review / scan / map` drives real documents end-to-end with Markdown reports. Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. Production wirings shipped in v0.2.0: `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), `sqlite-vec` (L1 persistent dense-vector index), and `fastcoref` (L0 coreference resolver). See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
+**v0.2.7 — CLI wiring in progress.** Every protocol seam already has a real production backend (see v0.2.0 below); v0.2.x is wiring the typer CLI through the production stack so `ctrldoc ingest / audit / qa / review / scan / map` drives real documents end-to-end with Markdown reports. Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. Production wirings shipped in v0.2.0: `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), `sqlite-vec` (L1 persistent dense-vector index), and `fastcoref` (L0 coreference resolver). See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
 
 ## Install
 
@@ -42,8 +42,9 @@ ctrldoc --profile heuristic ingest tests/fixtures/synthetic/gold_doc.md \
     --output-dir ./runs --doc-id aurora
 
 # 2. Run the deterministic anomaly-scan detectors (hedge words +
-#    empty section summaries). No LLM required.
-ctrldoc scan
+#    empty section summaries) over the synthetic doc. No LLM required.
+ctrldoc --profile heuristic scan \
+    --target tests/fixtures/synthetic/gold_doc.md
 
 # 3. See the full CLI surface.
 ctrldoc --help

@@ -121,3 +121,4 @@ Row format:
 | §5.2 + §6 (CLI `audit` wired to CoverageAuditPlaybook, Markdown grouped by verdict) | S-113 | src/ctrldoc/cli_audit.py, src/ctrldoc/cli.py | tests/test_cli_audit.py | covered |
 | §5.1 + §6 (CLI `qa` wired to QAPlaybook + verifier, Markdown answer + citation table) | S-114 | src/ctrldoc/cli_qa.py, src/ctrldoc/cli.py | tests/test_cli_qa.py | covered |
 | §5.4 + §6 (CLI `review` wired to AnalyticalReviewPlaybook, Markdown grouped by lens) | S-115 | src/ctrldoc/cli_review.py, src/ctrldoc/cli.py | tests/test_cli_review.py | covered |
+| §5.5 + §6 (CLI `scan` wired to AnomalyScanPlaybook, Markdown per-detector + severity table) | S-116 | src/ctrldoc/cli_scan.py, src/ctrldoc/cli.py | tests/test_cli_scan.py | covered |

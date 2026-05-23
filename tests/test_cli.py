@@ -412,17 +412,7 @@ def test_load_dotenv_missing_file_is_no_op(tmp_path: Path) -> None:
 # --- review moved to tests/test_cli_review.py (S-115) ---
 
 
-# --- scan ---
-
-
-def test_scan_runs_deterministic_detectors() -> None:
-    """An empty store yields an empty queue but the command exits OK."""
-    result = runner.invoke(app, ["scan"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["command"] == "scan"
-    assert payload["status"] == "ok"
-    assert payload["findings"] == []
+# --- scan moved to tests/test_cli_scan.py (S-116) ---
 
 
 # --- map ---

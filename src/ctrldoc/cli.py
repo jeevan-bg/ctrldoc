@@ -1006,39 +1006,106 @@ def review(
 @app.command()
 def scan(
     ctx: typer.Context,
-    index_path: Path = typer.Option(
-        Path("./runs"),
-        "--index",
-        "-i",
-        help="Directory holding the ingested target-doc index.",
+    target_path: Path = typer.Option(
+        ...,
+        "--target",
+        "-t",
+        help="Markdown target document to scan.",
+    ),
+    doc_id: str = typer.Option(
+        "",
+        "--doc-id",
+        "-d",
+        help="Logical id for the target doc; defaults to its file stem.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Override `paths.runs_path` from the config for this run.",
     ),
 ) -> None:
-    """UC5 anomaly scan — deterministic detectors over the indexed store."""
-    _ = ctx.obj
-    store = InMemoryStore()
+    """UC5 anomaly scan — deterministic detector battery over the target.
+
+    No LLM dependency: runs `HedgeWordDetector` + `EmptySummaryDetector`
+    (§5.5 baseline) against the ingested target. Works in every
+    profile including `heuristic`. Emits a Markdown triage queue
+    grouped by detector + a JSON payload of every finding.
+    """
+    from ctrldoc.cli_scan import render_scan_markdown
+
+    state: CliState = ctx.obj
+    _require_input_path(target_path)
+    config = _load_config(state.config_path)
+    if output_dir is not None:
+        config = config.model_copy(
+            update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    doc_hash = _doc_hash_for(text)
+    effective_doc_id = doc_id or target_path.stem
+
+    bundle = build_bundle(config=config, profile=state.profile)
+    store, vector_index, bm25_index = _build_per_doc_backends(
+        config=config,
+        profile=state.profile,
+        doc_hash=doc_hash,
+    )
+    ingest_document(
+        source=target_path,
+        parser=MarkdownParser(),
+        coref=bundle.coref,
+        ner=bundle.ner,
+        ner_labels=_DEFAULT_NER_LABELS,
+        embedder=bundle.embedder,
+        summarizer=bundle.summarizer,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+    )
+
     playbook = AnomalyScanPlaybook(
         detectors=[HedgeWordDetector(), EmptySummaryDetector()],
     )
     queue = playbook.run(store=store)
-    typer.echo(
-        json.dumps(
-            {
-                "command": "scan",
-                "status": "ok",
-                "index_path": str(index_path),
-                "findings": [
-                    {
-                        "detector": finding.ctrldoc,
-                        "severity": finding.severity,
-                        "claim": finding.claim,
-                        "chunk_id": finding.location.chunk_id,
-                    }
-                    for finding in queue.findings
-                ],
-            },
-            indent=2,
-        )
+
+    run_id = new_run_id()
+    runs_path = Path(config.paths.runs_path)
+    run_dir = runs_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    markdown = render_scan_markdown(
+        queue=queue,
+        target_path=target_path,
+        profile=state.profile,
+        run_id=run_id,
     )
+    payload: dict[str, object] = {
+        "command": "scan",
+        "status": "ok",
+        "run_id": run_id,
+        "target_path": str(target_path),
+        "target_doc_id": effective_doc_id,
+        "target_doc_hash": doc_hash,
+        "profile": state.profile,
+        "findings_total": len(queue.findings),
+        "findings": [
+            {
+                "detector": finding.ctrldoc,
+                "severity": finding.severity,
+                "claim": finding.claim,
+                "chunk_id": finding.location.chunk_id,
+                "text": finding.location.text,
+            }
+            for finding in queue.findings
+        ],
+    }
+
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _emit_output(state, markdown=markdown, payload=payload)
 
 
 @app.command(name="map")
