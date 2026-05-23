@@ -80,7 +80,7 @@ Row format:
 | §4.7 (provenance) | S-005 | src/ctrldoc/provenance.py | tests/test_provenance.py | covered |
 | §4.7 (observability) | S-006 | src/ctrldoc/trace.py | tests/test_trace.py | covered |
 | §4.7 (cost / budget) | S-007 | src/ctrldoc/budget.py | tests/test_budget.py | covered |
-| §5.1 (UC1 qa) | S-070 | src/ctrldoc/playbooks/qa.py | tests/test_qa.py | pending |
+| §5.1 (UC1 qa) | S-070 | src/ctrldoc/playbooks/qa.py | tests/test_qa_playbook.py | covered |
 | §5.2 (UC2 coverage) | S-071 | src/ctrldoc/playbooks/coverage.py | tests/test_coverage.py | pending |
 | §5.3 (UC3 quality) | S-072 | src/ctrldoc/playbooks/quality.py | tests/test_quality.py | pending |
 | §5.4 (UC4 review) | S-073 | src/ctrldoc/playbooks/review.py | tests/test_review.py | pending |
