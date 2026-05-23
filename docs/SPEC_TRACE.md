@@ -60,7 +60,7 @@ Row format:
 | §4.4 (NLI checker — interface + heuristic) | S-051 | src/ctrldoc/verify/nli.py | tests/test_nli.py | covered |
 | §4.4 (NLI — deberta-v3-large-mnli) | S-051b | src/ctrldoc/verify/nli_deberta.py | tests/test_verify_nli_deberta.py | covered |
 | §4.4 (LLM-judge — interface + heuristic) | S-052 | src/ctrldoc/verify/judge.py | tests/test_judge.py | covered |
-| §4.4 (LLM-judge — Qwen2.5-7B via Ollama) | S-052b | src/ctrldoc/verify/judge.py | tests/test_judge.py | queued |
+| §4.4 (LLM-judge — Qwen2.5-7B via Ollama) | S-052b | src/ctrldoc/verify/judge_ollama.py | tests/test_verify_judge_ollama.py | covered |
 | §4.4 (tier-2 escalation) | S-053 | src/ctrldoc/verify/judge_anthropic.py, src/ctrldoc/verify/judge_escalating.py | tests/test_judge_anthropic.py, tests/test_judge_escalating.py | covered |
 | §4.4 (claim verifier + repair pass) | S-054 | src/ctrldoc/verify/claim_verifier.py | tests/test_claim_verifier.py | covered |
 | §4.4 / §8.6 family 9 (verifier calibration) | S-055 | src/ctrldoc/verify/claim_verifier.py | tests/families/test_verifier_calibration.py | covered |

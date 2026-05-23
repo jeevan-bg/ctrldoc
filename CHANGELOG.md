@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-05-23
+
+Production tier-1 LLM-judge landing behind the v0.1.0 protocol seam.
+
+### Added
+
+- **`OllamaLLMJudge` (S-052b)** — `qwen2.5:7b-instruct-q4_K_M` via
+  a local Ollama HTTP service behind the existing `LLMJudge`
+  protocol seam. Lazy SDK client; temperature pinned at 0 for
+  determinism; markdown code fences stripped before JSON parsing;
+  confidence clamped to `[0, 1]`; missing/non-numeric keys raise
+  with a short message. Six integration tests skip cleanly when
+  the SDK is absent or no Ollama service is reachable. Lives in
+  `ctrldoc.verify.judge_ollama` so the heuristic ref stays
+  Ollama-free. `EscalatingLLMJudge` (S-053) now has a real local
+  tier-1 backend to wrap.
+
 ## [0.1.3] — 2026-05-23
 
 Production dense-embedder landing behind the v0.1.0 protocol seam.
