@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `ctrldoc.eval.claim_extraction` — universal-claim-tuple extraction
+  eval substrate. Exports `ClaimTuple`, `ClaimExtractor` Protocol,
+  `ClaimExtractionEvalRunner`, and `precision_recall_f1`. The
+  `tests/eval/claim_extraction_eval.jsonl` starter set ships 120
+  hand-curated sentence→tuple pairs across six doc types (spec,
+  runbook, RFC, legal, academic, narrative); the runner gates each
+  case on the F1 ≥ 0.85 floor.
+
 ## [0.3.0] — 2026-05-23
 
 End-to-end CLI release. Every UC playbook drives real documents
