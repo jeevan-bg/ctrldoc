@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from ctrldoc.playbooks.coverage import (
+    ChecklistItem,
+    CoverageAuditPlaybook,
+    CoverageReport,
+    CoverageRetriever,
+)
 from ctrldoc.playbooks.qa import (
     AnswerReport,
     QAPlaybook,
@@ -10,6 +16,10 @@ from ctrldoc.playbooks.qa import (
 
 __all__ = [
     "AnswerReport",
+    "ChecklistItem",
+    "CoverageAuditPlaybook",
+    "CoverageReport",
+    "CoverageRetriever",
     "QAPlaybook",
     "QARetriever",
 ]
