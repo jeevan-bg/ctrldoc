@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from ctrldoc.playbooks.anomaly import (
+    AnomalyQueue,
+    AnomalyScanPlaybook,
+    Detector,
+    EmptySummaryDetector,
+    HedgeWordDetector,
+)
 from ctrldoc.playbooks.coverage import (
     ChecklistItem,
     CoverageAuditPlaybook,
@@ -31,12 +38,17 @@ from ctrldoc.playbooks.review import (
 
 __all__ = [
     "AnalyticalReviewPlaybook",
+    "AnomalyQueue",
+    "AnomalyScanPlaybook",
     "AnswerReport",
     "ChecklistItem",
     "CoverageAuditPlaybook",
     "CoverageReport",
     "CoverageRetriever",
     "CriteriaGenerator",
+    "Detector",
+    "EmptySummaryDetector",
+    "HedgeWordDetector",
     "HeuristicCriteriaGenerator",
     "HeuristicLensGenerator",
     "Lens",
