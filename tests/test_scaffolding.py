@@ -13,7 +13,7 @@ import pytest
 def test_package_imports() -> None:
     import ctrldoc
 
-    assert ctrldoc.__version__ == "0.1.4"
+    assert ctrldoc.__version__ == "0.1.5"
 
 
 @pytest.mark.family_synthetic_gold

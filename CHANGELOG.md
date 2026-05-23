@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-05-23
+
+Production persistent vector index landing behind the v0.1.0
+protocol seam.
+
+### Added
+
+- **`SqliteVecVectorIndex` (S-022b)** — `sqlite-vec` `vec0`
+  virtual table with `distance_metric=cosine`, behind the existing
+  `VectorIndex` protocol seam. A sidecar `id_map` table maps
+  stable string `chunk_id` ↔ integer `rowid`. Cosine distance
+  from sqlite-vec is converted to cosine similarity so the
+  contract is identical to `InMemoryVectorIndex`. Ties resolve
+  host-side by insertion order to match the reference. Fifteen
+  integration tests skip cleanly when `sqlite-vec` is absent or
+  Python lacks loadable-extension support; covers protocol
+  conformance, dimension pin, idempotent add, remove (incl.
+  unknown id no-op), search ordering / k-truncation / edge cases,
+  and behavioural parity with `InMemoryVectorIndex` on a shared
+  fixture.
+
 ## [0.1.4] — 2026-05-23
 
 Production tier-1 LLM-judge landing behind the v0.1.0 protocol seam.

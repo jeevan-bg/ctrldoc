@@ -17,7 +17,7 @@ Large documents break LLMs in predictable ways:
 
 ## Status
 
-**v0.1.4 — MVP substrate complete; production reranker, NLI, dense embedder, and tier-1 judge landed.** Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. The LLM-backed backends ship behind protocol seams: production wirings for Anthropic / Ollama plug in without changing playbook code. `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), and `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama) are now wired in. See [CHANGELOG.md](CHANGELOG.md) for what's in each release and what's still queued, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
+**v0.1.5 — MVP substrate complete; production reranker, NLI, dense embedder, tier-1 judge, and sqlite-vec index landed.** Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. The LLM-backed backends ship behind protocol seams: production wirings for Anthropic / Ollama / sqlite-vec plug in without changing playbook code. `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), and `sqlite-vec` (L1 persistent dense-vector index) are now wired in. See [CHANGELOG.md](CHANGELOG.md) for what's in each release and what's still queued, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
 
 ## Install
 

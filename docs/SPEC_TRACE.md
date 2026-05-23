@@ -40,7 +40,7 @@ Row format:
 | §10/§13 (Store protocol) | S-020 | src/ctrldoc/store/__init__.py, src/ctrldoc/store/memory.py | tests/test_store.py | covered |
 | §4.2 (SQLite tables) | S-021 | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | covered |
 | §4.2 (dense vectors — interface) | S-022 | src/ctrldoc/store/vectors.py | tests/test_vector_index.py | covered |
-| §4.2 (dense vectors — sqlite-vec) | S-022b | src/ctrldoc/store/sqlite.py | tests/test_store_sqlite.py | blocked |
+| §4.2 (dense vectors — sqlite-vec) | S-022b | src/ctrldoc/store/vectors_sqlite_vec.py | tests/test_store_vectors_sqlite_vec.py | covered |
 | §4.2 (BM25 lexical) | S-023 | src/ctrldoc/store/bm25.py | tests/test_bm25.py | covered |
 | §4.2 (entity inverted index) | S-024 | src/ctrldoc/store/{__init__,memory,sqlite}.py | tests/test_store_entity_index.py | covered |
 | §3.1/§4.2 (cacheable prefix) | S-025 | src/ctrldoc/assembler.py | tests/test_skeleton_glossary.py | covered |
