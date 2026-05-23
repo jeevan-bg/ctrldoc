@@ -64,7 +64,8 @@ Row format:
 | §4.4 (tier-2 escalation) | S-053 | src/ctrldoc/verify/judge_anthropic.py, src/ctrldoc/verify/judge_escalating.py | tests/test_judge_anthropic.py, tests/test_judge_escalating.py | covered |
 | §4.4 (claim verifier + repair pass) | S-054 | src/ctrldoc/verify/claim_verifier.py | tests/test_claim_verifier.py | covered |
 | §4.4 / §8.6 family 9 (verifier calibration) | S-055 | src/ctrldoc/verify/claim_verifier.py | tests/families/test_verifier_calibration.py | covered |
-| §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
+| §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | partial |
+| §3.1 / §4.5 (stateless task primitive) | S-060 | src/ctrldoc/orch/task.py | tests/test_orch_task.py | covered |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
 | §4.7 (pre-commit gates) | S-002 | .pre-commit-config.yaml | tests/test_pre_commit_config.py | covered |
 | §4.7 (tokenizer) | S-003 | src/ctrldoc/tokenizer.py | tests/test_tokenizer.py | covered |
