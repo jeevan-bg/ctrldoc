@@ -1,0 +1,39 @@
+{
+  "doc_id": "aurora",
+  "playbook": "ingest",
+  "signature": {
+    "chunk_ids": [
+      "sha256:3d70512ea74cc8cb2284835021bcc2c352c64c4fadd852dd9044a0942903e9a6",
+      "sha256:3e6bbf2f09239ed4c728ee374e5c293f4e12becbd6c13171c71fb50ebf502a76",
+      "sha256:40c0326ae5f1994bb597deb7e733bd19916dcbdcd6b8b7a23c24dc97d2aa4d13",
+      "sha256:63c0fbfc5de1c585fa65e6792a3705423eb746528ad8e7d8218a6e2f62c759cf",
+      "sha256:7623aea660e2297ba9871751a77192a647c891d7a438768436b785e1fb083d55",
+      "sha256:76fb1debf85466cfa9aa4f2ca8238090104710b088fe53277d8e302ff8d6dba8",
+      "sha256:872b235441311866829c40acc21853258c836d7dbf8c44234ccdf8ac9a4db861",
+      "sha256:8910f6a893c975e505661e1cbb3d3995911072376941f307c2b051d6cd966c94",
+      "sha256:adb266356418e010858452112682afd6d93af99e6fdc8c58065ef26f201f8304",
+      "sha256:c17610076a8be9be21a9845097b16ebf37dada40236a4f0b33dece4c59a4f810",
+      "sha256:dcfb2a751f297d48d6e4a5b014e8a95b39214b453c46feccd6ae5cb79da80506",
+      "sha256:e8d3ea0b55f6c630e69954c9eefe438ca3b799def29086d05749c3f7957bdbdb"
+    ],
+    "section_ids": [
+      "sec/aurora-distributed-cache-system-specification",
+      "sec/aurora-distributed-cache-system-specification/1-overview",
+      "sec/aurora-distributed-cache-system-specification/2-architecture",
+      "sec/aurora-distributed-cache-system-specification/2-architecture/2-1-components",
+      "sec/aurora-distributed-cache-system-specification/2-architecture/2-2-data-flow",
+      "sec/aurora-distributed-cache-system-specification/3-consistency-model",
+      "sec/aurora-distributed-cache-system-specification/3-consistency-model/3-1-eventually-consistent-reads",
+      "sec/aurora-distributed-cache-system-specification/3-consistency-model/3-2-strongly-consistent-writes",
+      "sec/aurora-distributed-cache-system-specification/4-fault-tolerance",
+      "sec/aurora-distributed-cache-system-specification/5-security",
+      "sec/aurora-distributed-cache-system-specification/6-performance",
+      "sec/aurora-distributed-cache-system-specification/7-operations",
+      "sec/aurora-distributed-cache-system-specification/7-operations/7-1-scaling",
+      "sec/aurora-distributed-cache-system-specification/7-operations/7-2-upgrades",
+      "sec/aurora-distributed-cache-system-specification/8-glossary"
+    ],
+    "entity_ids": []
+  },
+  "signature_hash": "2df9290b6a87dd4413081d0a82946fdd260589d11282d75f5a643ce60f85564c"
+}
