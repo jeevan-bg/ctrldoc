@@ -86,7 +86,8 @@ Row format:
 | §5.4 (UC4 review) | S-073 | src/ctrldoc/playbooks/review.py | tests/test_analytical_review.py | covered |
 | §5.5 (UC5 anomaly) | S-074 | src/ctrldoc/playbooks/anomaly.py | tests/test_anomaly_scan.py | partial (Detector protocol + 2 of 6 reference detectors) |
 | §5.6 (UC6 relations) | S-075 | src/ctrldoc/playbooks/relations.py | tests/test_relation_map.py | covered |
-| §8.1 (eval sets) | S-080..S-085 | tests/eval/ | tests/eval/ | pending |
+| §8.1 (eval harness substrate) | S-080 | src/ctrldoc/eval/harness.py | tests/test_eval_harness.py | covered |
+| §8.1 (per-playbook eval sets) | S-081..S-085 | tests/eval/ | tests/eval/ | pending |
 | §8.5 (adversarial) | S-086 | tests/adversarial/ | tests/adversarial/ | pending |
 | §8.6 family 1 | S-038 | src/ctrldoc/ingest/ | tests/families/test_ingest_completeness.py | pending |
 | §8.6 family 2 | S-046 | src/ctrldoc/retrieval/ | tests/families/test_niah.py | pending |
