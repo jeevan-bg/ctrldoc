@@ -13,6 +13,12 @@ from ctrldoc.playbooks.qa import (
     QAPlaybook,
     QARetriever,
 )
+from ctrldoc.playbooks.quality import (
+    CriteriaGenerator,
+    HeuristicCriteriaGenerator,
+    QualityAuditPlaybook,
+    QualityReport,
+)
 
 __all__ = [
     "AnswerReport",
@@ -20,6 +26,10 @@ __all__ = [
     "CoverageAuditPlaybook",
     "CoverageReport",
     "CoverageRetriever",
+    "CriteriaGenerator",
+    "HeuristicCriteriaGenerator",
     "QAPlaybook",
     "QARetriever",
+    "QualityAuditPlaybook",
+    "QualityReport",
 ]
