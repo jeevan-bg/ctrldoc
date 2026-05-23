@@ -409,20 +409,7 @@ def test_load_dotenv_missing_file_is_no_op(tmp_path: Path) -> None:
 # --- audit moved to tests/test_cli_audit.py (S-113) ---
 
 
-# --- review stub ---
-
-
-def test_review_blank_doc_type_exits_with_code_two() -> None:
-    result = runner.invoke(app, ["review", "   "])
-    assert result.exit_code == 2
-    assert "blank" in result.stderr
-
-
-def test_review_emits_stub_with_doc_type() -> None:
-    result = runner.invoke(app, ["review", "Aurora kernel spec"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["inputs"]["doc_type"] == "Aurora kernel spec"
+# --- review moved to tests/test_cli_review.py (S-115) ---
 
 
 # --- scan ---

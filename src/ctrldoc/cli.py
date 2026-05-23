@@ -838,26 +838,169 @@ _COVERAGE_AUDIT_SYSTEM_PROMPT = (
 def review(
     ctx: typer.Context,
     doc_type: str = typer.Argument(..., help="Document type, e.g. `Aurora L0 kernel spec`."),
-    index_path: Path = typer.Option(
-        Path("./runs"),
-        "--index",
-        "-i",
-        help="Directory holding the ingested target-doc index.",
+    target_path: Path = typer.Option(
+        ...,
+        "--target",
+        "-t",
+        help="Markdown target document to review.",
+    ),
+    doc_id: str = typer.Option(
+        "",
+        "--doc-id",
+        "-d",
+        help="Logical id for the target doc; defaults to its file stem.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Override `paths.runs_path` from the config for this run.",
     ),
 ) -> None:
-    """UC4 analytical review (skeleton)."""
-    _ = ctx.obj
+    """UC4 analytical review — lens fan-out then one synthesis call.
+
+    Enumerates the canonical 5-lens set for the `doc_type`
+    (`HeuristicLensGenerator`), runs one LLM sweep per lens via the
+    bundle's `local` tier, then a single synthesis call routed
+    through the `opus` tier (the only Opus call per playbook run in
+    thrifty mode). Emits a Markdown narrative + per-lens findings
+    table.
+    """
+    from ctrldoc.assembler import (
+        CacheablePrefix,
+        assemble_glossary,
+        assemble_skeleton,
+    )
+    from ctrldoc.cli_audit import BundleRetriever
+    from ctrldoc.cli_review import LLMLensSweeper, render_review_markdown
+    from ctrldoc.orch.synthesis import SynthesisRunner
+    from ctrldoc.orch.task import StatelessTaskRunner
+    from ctrldoc.playbooks.review import (
+        AnalyticalReviewPlaybook,
+        HeuristicLensGenerator,
+    )
+
+    state: CliState = ctx.obj
     if not doc_type.strip():
         typer.echo("error: doc_type must not be blank", err=True)
         raise typer.Exit(code=2)
-    _emit_stub(
-        command="review",
-        inputs={"doc_type": doc_type, "index_path": str(index_path)},
-        next_step=(
-            "Wire AnalyticalReviewPlaybook with the BackendBundle deps and call "
-            "playbook.run(doc_type)."
-        ),
+    _require_input_path(target_path)
+    if state.profile == "heuristic":
+        typer.echo(
+            "error: review requires --profile thrifty|production (heuristic has no LLM seam)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    config = _load_config(state.config_path)
+    if output_dir is not None:
+        config = config.model_copy(
+            update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    doc_hash = _doc_hash_for(text)
+    effective_doc_id = doc_id or target_path.stem
+
+    bundle = build_bundle(config=config, profile=state.profile)
+    store, vector_index, bm25_index = _build_per_doc_backends(
+        config=config,
+        profile=state.profile,
+        doc_hash=doc_hash,
     )
+    ingest_document(
+        source=target_path,
+        parser=MarkdownParser(),
+        coref=bundle.coref,
+        ner=bundle.ner,
+        ner_labels=_DEFAULT_NER_LABELS,
+        embedder=bundle.embedder,
+        summarizer=bundle.summarizer,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+    )
+
+    skeleton = assemble_skeleton(store)
+    glossary = assemble_glossary(store)
+    bundle_retriever = BundleRetriever(
+        bundle=bundle,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+        prefix_skeleton=skeleton,
+        prefix_glossary=glossary,
+    )
+    sweep_prefix = CacheablePrefix(
+        system_prompt=(
+            "You are a strict analytical reviewer. Return one JSON object "
+            'of shape {"findings": [{"claim": str, "severity": '
+            '"info"|"warn"|"critical", "citation_chunk_id": str}]}. '
+            "Cite only chunk_ids that appear in the EVIDENCE. No prose "
+            "outside the JSON."
+        ),
+        doc_skeleton=skeleton,
+        entity_glossary=glossary,
+    )
+    synth_prefix = CacheablePrefix(
+        system_prompt=(
+            "You are an analytical-review synthesiser. Read the structured "
+            "findings JSON and emit one JSON object of shape "
+            '{"headline": str, "sections": [str], "summary": str}. '
+            "Do not invent findings; group the ones you see by theme."
+        ),
+        doc_skeleton=skeleton,
+        entity_glossary=glossary,
+    )
+
+    assert bundle.task_client_router is not None  # guarded by profile check above
+    local_client = bundle.task_client_router.for_tier("local")
+    opus_client = bundle.task_client_router.for_tier("opus")
+    sweep_runner = StatelessTaskRunner(client=local_client)
+    synthesis_runner = SynthesisRunner(client=opus_client)
+    sweeper = LLMLensSweeper(
+        prefix=sweep_prefix,
+        retriever=bundle_retriever,
+        task_runner=sweep_runner,
+    )
+    playbook = AnalyticalReviewPlaybook(
+        prefix=synth_prefix,
+        lens_generator=HeuristicLensGenerator(),
+        sweeper=sweeper,
+        synthesis_runner=synthesis_runner,
+    )
+
+    report = playbook.run(doc_type)
+
+    run_id = new_run_id()
+    runs_path = Path(config.paths.runs_path)
+    run_dir = runs_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    markdown = render_review_markdown(
+        report=report,
+        target_path=target_path,
+        profile=state.profile,
+        run_id=run_id,
+    )
+    payload: dict[str, object] = {
+        "command": "review",
+        "status": "ok",
+        "run_id": run_id,
+        "doc_type": doc_type,
+        "target_path": str(target_path),
+        "target_doc_id": effective_doc_id,
+        "target_doc_hash": doc_hash,
+        "profile": state.profile,
+        "max_cost_usd": state.max_cost_usd,
+        "findings": [f.model_dump(mode="json") for f in report.findings],
+        "narrative": report.narrative.model_dump(mode="json"),
+    }
+
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _emit_output(state, markdown=markdown, payload=payload)
 
 
 @app.command()
