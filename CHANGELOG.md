@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-23
+
+Minor version bump rolling up the six post-v0.1.0 production
+backend landings (`0.1.1` … `0.1.6`) into a single release tag.
+
+### Summary
+
+Every protocol seam in the v0.1.0 substrate now has a real
+production backend behind it:
+
+| Seam | Backend | Slice | Release |
+|---|---|---|---|
+| `Reranker` (§4.3) | `BAAI/bge-reranker-v2-m3` | S-043b | 0.1.1 |
+| `NLIChecker` (§4.4) | `cross-encoder/nli-deberta-v3-large` | S-051b | 0.1.2 |
+| `Embedder` (§4.1) | `bge-m3` via Ollama | S-036b | 0.1.3 |
+| `LLMJudge` (§4.4) | `qwen2.5:7b-instruct-q4_K_M` via Ollama | S-052b | 0.1.4 |
+| `VectorIndex` (§4.2) | `sqlite-vec` (`vec0`, cosine) | S-022b | 0.1.5 |
+| `CorefResolver` (§4.1) | `fastcoref` (LingMess) | S-034b | 0.1.6 |
+
+Heuristic / dependency-free references stay in place as
+behavioural oracles — production backends opt in per call site.
+
 ## [0.1.6] — 2026-05-23
 
 Final production-backend landing — every v0.1.0 protocol seam now

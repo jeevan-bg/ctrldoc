@@ -17,7 +17,7 @@ Large documents break LLMs in predictable ways:
 
 ## Status
 
-**v0.1.6 — MVP substrate complete; all six production backends landed.** Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. Every LLM-backed seam now has a production wiring: `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), `sqlite-vec` (L1 persistent dense-vector index), and `fastcoref` (L0 coreference resolver). See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
+**v0.2.0 — every protocol seam has a real production backend.** Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. Every LLM-backed seam ships a production wiring: `BAAI/bge-reranker-v2-m3` (L2 reranker), `cross-encoder/nli-deberta-v3-large` (L3 NLI), `bge-m3` (L0 dense embedder, via Ollama), `qwen2.5:7b-instruct-q4_K_M` (L3 tier-1 LLM-judge, via Ollama), `sqlite-vec` (L1 persistent dense-vector index), and `fastcoref` (L0 coreference resolver). See [CHANGELOG.md](CHANGELOG.md) for the per-release breakdown, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
 
 ## Install
 
