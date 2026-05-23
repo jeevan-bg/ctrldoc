@@ -1,0 +1,30 @@
+{"id": "ref-001", "tags": ["out-of-doc", "pricing"], "question": "What does an Aurora node licence cost per year?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-002", "tags": ["out-of-doc", "history"], "question": "When was Aurora first released and which company developed it?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-003", "tags": ["out-of-doc", "pricing"], "question": "Is there an enterprise support tier with a guaranteed 1-hour response SLA?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-004", "tags": ["out-of-doc", "capacity"], "question": "What is the maximum recommended total storage capacity of an Aurora cluster in petabytes?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-005", "tags": ["out-of-doc", "sdks"], "question": "Which official client SDKs does Aurora ship for Rust, Go, and Java?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-006", "tags": ["out-of-doc", "ui"], "question": "Does Aurora include a web-based admin dashboard for monitoring node health?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-007", "tags": ["out-of-doc", "cloud"], "question": "Which managed cloud services offer Aurora as a hosted product?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-008", "tags": ["out-of-doc", "features"], "question": "Does Aurora include vector-search or embedding-similarity functionality for AI workloads?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-009", "tags": ["out-of-doc", "compliance"], "question": "Is Aurora certified for SOC 2 Type II and HIPAA-compliant deployments?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-010", "tags": ["out-of-doc", "persistence"], "question": "What backup file format does Aurora use for periodic snapshots written to disk?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-011", "tags": ["out-of-doc", "migration"], "question": "What migration tool does the Aurora team provide for importing data from Redis?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-012", "tags": ["out-of-doc", "benchmark"], "question": "How does Aurora's P99 latency compare to Memcached on identical hardware?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-013", "tags": ["out-of-doc", "platform"], "question": "Is there an embedded build of Aurora suitable for mobile or IoT devices with under 64MB of RAM?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-014", "tags": ["out-of-doc", "multitenancy"], "question": "How does Aurora isolate workloads between tenants in a shared multi-tenant deployment?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-015", "tags": ["out-of-doc", "audit"], "question": "What is the default retention window for Aurora's audit log entries?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-016", "tags": ["out-of-doc", "hardware"], "question": "Which CPU and memory vendors does Aurora certify as production-supported?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-017", "tags": ["out-of-doc", "roadmap"], "question": "What new features are planned for Aurora version 0.5?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-018", "tags": ["out-of-doc", "people"], "question": "How many engineers are on the Aurora core development team?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-019", "tags": ["out-of-doc", "licence"], "question": "Under which open-source licence is Aurora distributed?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-020", "tags": ["out-of-doc", "process"], "question": "What is the contribution process for submitting a patch to Aurora?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-021", "tags": ["out-of-doc", "security"], "question": "Does Aurora run a public bug bounty programme, and what is the payout range?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-022", "tags": ["out-of-doc", "vulnerabilities"], "question": "What CVEs have been filed against Aurora since its first release?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-023", "tags": ["out-of-doc", "persistence"], "question": "Which disk persistence options does Aurora offer for durable storage across restarts?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-024", "tags": ["out-of-doc", "geo"], "question": "What is the recommended deployment topology for an Aurora cluster spanning three geographic regions?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-025", "tags": ["out-of-doc", "platform"], "question": "Which operating systems and Linux kernel versions are officially supported by Aurora?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-026", "tags": ["out-of-doc", "container"], "question": "Is there an officially maintained Kubernetes operator for deploying Aurora?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-027", "tags": ["out-of-doc", "monitoring"], "question": "Which Prometheus exporters or OpenTelemetry collectors are recommended for Aurora observability?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-028", "tags": ["out-of-doc", "gossip-config"], "question": "What is the default Aurora GossipBus heartbeat interval in milliseconds and its tunable range?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-029", "tags": ["out-of-doc", "geo"], "question": "What WAN-replication strategy does Aurora provide for cross-data-centre clusters?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "ref-030", "tags": ["out-of-doc", "tooling"], "question": "Which command-line tool ships with Aurora for inspecting cluster state and forcing rebalances?", "gold_chunk_ids": [], "should_refuse": true}
