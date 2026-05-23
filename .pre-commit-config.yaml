@@ -39,3 +39,20 @@ repos:
         entry: bash scripts/leak_scan.sh
         language: system
         pass_filenames: false
+      - id: context-budget
+        name: context budget (STATE/ROADMAP/SPEC_DIGEST caps + shard freshness)
+        entry: bash scripts/check-context-budget.sh
+        language: system
+        pass_filenames: false
+      - id: shard-spec
+        name: docs/spec/ shards in sync with docs/SPEC.md
+        entry: bash scripts/shard-spec.sh --check
+        language: system
+        pass_filenames: false
+        files: '^docs/(SPEC\.md|spec/.*\.md)$'
+      - id: shard-decisions
+        name: docs/decisions/ shards in sync with docs/DECISIONS.md
+        entry: bash scripts/shard-decisions.sh --check
+        language: system
+        pass_filenames: false
+        files: '^docs/(DECISIONS\.md|decisions/.*\.md)$'
