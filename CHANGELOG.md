@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-05-23
+
+### Added
+
+- `ctrldoc scan --target <md>` is wired end-to-end through
+  `AnomalyScanPlaybook` (UC5). Ingests the target inline, runs
+  the deterministic detector battery (`HedgeWordDetector` +
+  `EmptySummaryDetector` — §5.5 baseline), writes a Markdown
+  triage report grouped by detector + a JSON payload. No LLM
+  dependency: works in every profile including `heuristic`.
+- `render_scan_markdown` emits per-detector groups sorted
+  critical → warn → info, plus a per-severity summary table.
+
+### Notes
+
+- README Quickstart step 2 now invokes
+  `ctrldoc --profile heuristic scan --target <gold_doc>` (the
+  command previously took no args).
+- One obsolete scan stub test removed from `tests/test_cli.py`.
+
 ## [0.2.6] — 2026-05-23
 
 ### Added

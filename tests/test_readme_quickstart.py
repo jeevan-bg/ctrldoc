@@ -108,9 +108,24 @@ def test_readme_quickstart_step_1_ingest_succeeds(
     assert (tmp_path / "runs" / "aurora__ingest_signature.json").is_file()
 
 
-def test_readme_quickstart_step_2_scan_succeeds() -> None:
-    """Step 2: run the deterministic anomaly scan."""
-    result = runner.invoke(app, ["scan"])
+def test_readme_quickstart_step_2_scan_succeeds(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """Step 2: run the deterministic anomaly scan over the synthetic doc."""
+    result = runner.invoke(
+        app,
+        [
+            "--profile",
+            "heuristic",
+            "--format",
+            "json",
+            "scan",
+            "--target",
+            str(repo_root / "tests" / "fixtures" / "synthetic" / "gold_doc.md"),
+            "--output-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
     assert result.exit_code == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["command"] == "scan"
