@@ -138,10 +138,30 @@ def _build_heuristic(config: Config) -> BackendBundle:
     )
 
 
+def _resolve_optional_ner() -> NERTagger:
+    """Return GLiNERTagger when gliner is importable; else StubNERTagger.
+
+    Lets thrifty / production bundles construct without gliner installed —
+    entity-based retrieval just degrades to zero entities (the bundle's
+    glossary will be empty and entity-view retrieval steps return nothing).
+    Coverage / QA / review / scan / map still work; map gets fewer
+    concepts to walk and the audit/QA prefix carries an empty glossary.
+    """
+    try:
+        # Touch `gliner` here so we fall through to the stub when the
+        # package itself is missing (GLiNERTagger lazy-imports it).
+        import gliner  # type: ignore[import-not-found] # noqa: F401
+
+        from ctrldoc.ingest.ner_gliner import GLiNERTagger
+
+        return GLiNERTagger()
+    except ImportError:
+        return StubNERTagger({})
+
+
 def _build_thrifty(config: Config) -> BackendBundle:
     from ctrldoc.ingest.coref_fastcoref import FastCorefResolver
     from ctrldoc.ingest.embedder_ollama import OllamaEmbedder
-    from ctrldoc.ingest.ner_gliner import GLiNERTagger
     from ctrldoc.orch.task_anthropic import AnthropicTaskClient
     from ctrldoc.orch.task_ollama import OllamaTaskClient
     from ctrldoc.retrieval.reranker_bge import BGEReranker
@@ -161,7 +181,7 @@ def _build_thrifty(config: Config) -> BackendBundle:
         bm25_index=TantivyBM25Index(path=index_dir / "bm25"),
         store=SQLiteStore(index_dir / "store.db"),
         coref=FastCorefResolver(),
-        ner=GLiNERTagger(),
+        ner=_resolve_optional_ner(),
         reranker=BGEReranker(),
         planner=HeuristicPlanner(),
         task_client_router=TaskClientRouter(
@@ -178,7 +198,6 @@ def _build_thrifty(config: Config) -> BackendBundle:
 def _build_production(config: Config) -> BackendBundle:
     from ctrldoc.ingest.coref_fastcoref import FastCorefResolver
     from ctrldoc.ingest.embedder_ollama import OllamaEmbedder
-    from ctrldoc.ingest.ner_gliner import GLiNERTagger
     from ctrldoc.ingest.summarizer_anthropic import AnthropicSummarizer
     from ctrldoc.orch.task_anthropic import AnthropicTaskClient
     from ctrldoc.orch.task_ollama import OllamaTaskClient
@@ -203,7 +222,7 @@ def _build_production(config: Config) -> BackendBundle:
         bm25_index=TantivyBM25Index(path=index_dir / "bm25"),
         store=SQLiteStore(index_dir / "store.db"),
         coref=FastCorefResolver(),
-        ner=GLiNERTagger(),
+        ner=_resolve_optional_ner(),
         reranker=BGEReranker(),
         planner=AnthropicPlanner(),
         task_client_router=TaskClientRouter(

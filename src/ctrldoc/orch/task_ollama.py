@@ -30,12 +30,19 @@ class OllamaTaskClient:
         host: str = "http://127.0.0.1:11434",
         max_output_tokens: int = 2048,
         temperature: float = 0.0,
+        # Ollama defaults `num_ctx` to 2048 which silently truncates any
+        # prompt larger than that — including ones that combine a long
+        # cacheable prefix (doc skeleton + glossary) with an evidence
+        # pack. Bumping to 16k matches the §4.7 per-call cap and gives
+        # Qwen2.5-7B (32k native) room to see the full message.
+        num_ctx: int = 16384,
         client: Any | None = None,
     ) -> None:
         self._model = model
         self._host = host
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._num_ctx = num_ctx
         self._client: Any | None = client
 
     def _ensure_client(self) -> Any:
@@ -52,6 +59,7 @@ class OllamaTaskClient:
             options={
                 "temperature": self._temperature,
                 "num_predict": self._max_output_tokens,
+                "num_ctx": self._num_ctx,
             },
             messages=[
                 {"role": "system", "content": system},

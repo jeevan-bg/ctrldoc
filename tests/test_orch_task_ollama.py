@@ -84,6 +84,20 @@ def test_options_set_temperature_zero_and_num_predict_cap() -> None:
     assert options["num_predict"] == 512
 
 
+def test_options_carry_default_num_ctx_for_long_prefix_prompts() -> None:
+    """Ollama defaults `num_ctx` to 2048; we override so the cacheable
+    prefix + evidence pack fits without silent truncation."""
+    stub = _StubClient("ok")
+    OllamaTaskClient(client=stub).call(system="s", user="u")
+    assert stub.calls[0]["options"]["num_ctx"] == 16384
+
+
+def test_custom_num_ctx_forwarded() -> None:
+    stub = _StubClient("ok")
+    OllamaTaskClient(client=stub, num_ctx=8192).call(system="s", user="u")
+    assert stub.calls[0]["options"]["num_ctx"] == 8192
+
+
 def test_custom_temperature_forwarded() -> None:
     stub = _StubClient("ok")
     OllamaTaskClient(client=stub, temperature=0.2).call(system="s", user="u")
