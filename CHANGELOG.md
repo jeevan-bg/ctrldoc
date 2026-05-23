@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-05-23
+
+### Added
+
+- `BackendBundle` + `build_bundle(config, profile)` in
+  `src/ctrldoc/backends.py` — typed wiring for the three runtime
+  profiles. `heuristic` returns deterministic reference impls (no
+  LLM, no model loading). `thrifty` uses the production retrieval
+  / verifier infra (Ollama embedder, sqlite-vec, BGE reranker,
+  fastcoref, GLiNER, DeBERTa NLI) but keeps every per-item /
+  per-claim LLM seam on local Qwen2.5-7B; the `task_client_router`
+  still binds Opus on the `opus` tier so playbooks can spend
+  exactly one synthesis call per run. `production` upgrades the
+  planner / claim decomposer / summarizer / judge to Anthropic-
+  backed equivalents. Heavy backends are lazy-imported per
+  profile so `heuristic` mode never pulls Ollama or transformers.
+  `build_bundle_from_toml(path, profile)` is the one-line CLI
+  entry point (SPEC-REF §4.5, §4.7).
+
 ## [0.2.1] — 2026-05-23
 
 ### Added

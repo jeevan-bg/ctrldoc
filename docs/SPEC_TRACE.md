@@ -116,3 +116,4 @@ Row format:
 | §12 (README quickstart verified) | S-102 | README.md | tests/test_readme_quickstart.py | covered |
 | §7 (release v0.1.0) | S-103 | pyproject.toml, src/ctrldoc/__init__.py, CHANGELOG.md | tests/test_release_v0_1_0.py | covered |
 | §4.5 (orchestrator — tiered routing, local 7B `TaskClient`) | S-110 | src/ctrldoc/orch/task_ollama.py | tests/test_orch_task_ollama.py | covered |
+| §4.5 + §4.7 (`BackendBundle` factory — profile-driven wiring) | S-111 | src/ctrldoc/backends.py | tests/test_backends.py | covered |
