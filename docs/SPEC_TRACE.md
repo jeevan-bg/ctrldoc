@@ -105,7 +105,7 @@ Row format:
 | §8.5 / §8.6 family 8 (adversarial detectors + invariants) | S-086 | src/ctrldoc/security/adversarial.py | tests/families/test_adversarial.py | covered |
 | §8.6 family 9 | S-055 | src/ctrldoc/verify/ | tests/families/test_verifier_calibration.py | covered |
 | §8.6 family 10 (determinism / reproducibility) | S-087 | src/ctrldoc/ingest/, src/ctrldoc/assembler.py, src/ctrldoc/retrieval/fusion.py | tests/families/test_determinism.py | covered |
-| §8.6 family 11 | S-088 | n/a | tests/families/test_perf_cost.py | pending |
+| §8.4 / §8.6 family 11 (cost + latency + cache gates) | S-088 | src/ctrldoc/perf/baseline.py | tests/families/test_perf_cost.py | covered |
 | §8.6 family 12 | S-066 | src/ctrldoc/orch/checkpoint.py | tests/test_orch_checkpoint.py | partial (checkpoint subset covered; broader resilience tracked under S-080+) |
 | §8.6 family 13 | S-039 | src/ctrldoc/ingest/ | tests/families/test_incremental.py | pending |
 | §8.6 family 14 | S-064 | src/ctrldoc/orch/concurrency.py | tests/test_orch_concurrency.py | covered |
