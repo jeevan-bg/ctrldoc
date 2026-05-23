@@ -109,4 +109,4 @@ Row format:
 | §8.6 family 12 | S-066 | src/ctrldoc/orch/checkpoint.py | tests/test_orch_checkpoint.py | partial (checkpoint subset covered; broader resilience tracked under S-080+) |
 | §8.6 family 13 | S-039 | src/ctrldoc/ingest/ | tests/families/test_incremental.py | pending |
 | §8.6 family 14 | S-064 | src/ctrldoc/orch/concurrency.py | tests/test_orch_concurrency.py | covered |
-| §8.7 (LLM judge) | S-089 | tests/eval/judge/ | tests/eval/judge/ | pending |
+| §8.7 (LLM-as-judge with bias controls) | S-089 | src/ctrldoc/eval/llm_judge.py | tests/test_llm_judge.py | covered |
