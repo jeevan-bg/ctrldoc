@@ -55,7 +55,8 @@ Row format:
 | §8.6 family 6 (referential integrity, partial) | S-044 | src/ctrldoc/retrieval/evidence.py | tests/test_evidence_pack.py | partial |
 | §4.3 (planner LLM call) | S-045 | src/ctrldoc/retrieval/planner.py, src/ctrldoc/retrieval/planner_anthropic.py | tests/test_planner.py, tests/test_planner_anthropic.py | covered |
 | §8.6 family 2 (NIAH retrieval) | S-046 | src/ctrldoc/retrieval/ | tests/families/test_niah.py | covered (BM25 + fused; dense view deferred until S-036b) |
-| §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | pending |
+| §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | partial |
+| §4.4 (claim decomposer) | S-050 | src/ctrldoc/verify/claim_decomposer.py, src/ctrldoc/verify/claim_decomposer_anthropic.py | tests/test_claim_decomposer.py, tests/test_claim_decomposer_anthropic.py | covered |
 | §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
 | §4.7 (pre-commit gates) | S-002 | .pre-commit-config.yaml | tests/test_pre_commit_config.py | covered |
