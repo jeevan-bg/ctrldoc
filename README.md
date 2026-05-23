@@ -17,7 +17,7 @@ Large documents break LLMs in predictable ways:
 
 ## Status
 
-**v0.1.0 — MVP substrate complete.** Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. The LLM-backed backends ship behind protocol seams: production wirings for Anthropic / Ollama plug in without changing playbook code. See [CHANGELOG.md](CHANGELOG.md) for what's in 0.1.0 and what's queued, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
+**v0.1.1 — MVP substrate complete; production reranker landed.** Six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI, runnable examples. The LLM-backed backends ship behind protocol seams: production wirings for Anthropic / Ollama plug in without changing playbook code. The `BAAI/bge-reranker-v2-m3` cross-encoder is the first such backend wired up. See [CHANGELOG.md](CHANGELOG.md) for what's in 0.1.0 / 0.1.1 and what's still queued, and [docs/SPEC.md](docs/SPEC.md) for the full specification.
 
 ## Install
 
