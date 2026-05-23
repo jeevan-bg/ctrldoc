@@ -42,3 +42,4 @@ ctrldoc.db
 
 # Fixture downloads (kept out of repo to limit size)
 tests/fixtures/downloaded/
+.env
