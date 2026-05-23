@@ -51,6 +51,8 @@ Row format:
 | §4.3 (Reciprocal Rank Fusion) | S-042 | src/ctrldoc/retrieval/fusion.py | tests/test_retrieval_fusion.py | covered |
 | §4.3 (reranker — interface + refs) | S-043 | src/ctrldoc/retrieval/reranker.py | tests/test_retrieval_reranker.py | covered |
 | §4.3 (reranker — BGE-reranker-v2-m3) | S-043b | src/ctrldoc/retrieval/reranker.py | tests/test_retrieval_reranker.py | queued |
+| §4.3 (evidence pack builder) | S-044 | src/ctrldoc/retrieval/evidence.py | tests/test_evidence_pack.py | covered |
+| §8.6 family 6 (referential integrity, partial) | S-044 | src/ctrldoc/retrieval/evidence.py | tests/test_evidence_pack.py | partial |
 | §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | pending |
 | §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
