@@ -113,3 +113,4 @@ Row format:
 | §8.6 (cross-cutting continuous canary) | S-090 | src/ctrldoc/canary/canary.py | tests/test_canary.py, tests/canary/baselines/aurora__ingest.json | covered |
 | §6 (CLI skeleton) | S-100 | src/ctrldoc/cli.py, src/ctrldoc/__main__.py | tests/test_cli.py | covered |
 | §6 (playbook examples) | S-101 | examples/ | tests/test_examples_smoke.py | covered |
+| §12 (README quickstart verified) | S-102 | README.md | tests/test_readme_quickstart.py | covered |
