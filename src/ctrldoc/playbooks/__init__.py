@@ -26,6 +26,15 @@ from ctrldoc.playbooks.quality import (
     QualityAuditPlaybook,
     QualityReport,
 )
+from ctrldoc.playbooks.relations import (
+    Concept,
+    ConceptExtractor,
+    CoOccurrenceRetriever,
+    RelationClassification,
+    RelationClassifier,
+    RelationGraph,
+    RelationMapPlaybook,
+)
 from ctrldoc.playbooks.review import (
     AnalyticalReviewPlaybook,
     HeuristicLensGenerator,
@@ -42,6 +51,9 @@ __all__ = [
     "AnomalyScanPlaybook",
     "AnswerReport",
     "ChecklistItem",
+    "CoOccurrenceRetriever",
+    "Concept",
+    "ConceptExtractor",
     "CoverageAuditPlaybook",
     "CoverageReport",
     "CoverageRetriever",
@@ -58,6 +70,10 @@ __all__ = [
     "QARetriever",
     "QualityAuditPlaybook",
     "QualityReport",
+    "RelationClassification",
+    "RelationClassifier",
+    "RelationGraph",
+    "RelationMapPlaybook",
     "ReviewNarrative",
     "ReviewReport",
 ]
