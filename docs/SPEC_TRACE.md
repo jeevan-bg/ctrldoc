@@ -124,3 +124,7 @@ Row format:
 | §5.5 + §6 (CLI `scan` wired to AnomalyScanPlaybook, Markdown per-detector + severity table) | S-116 | src/ctrldoc/cli_scan.py, src/ctrldoc/cli.py | tests/test_cli_scan.py | covered |
 | §5.6 + §6 (CLI `map` wired to RelationMapPlaybook, Markdown adjacency + Mermaid graph) | S-117 | src/ctrldoc/cli_map.py, src/ctrldoc/cli.py | tests/test_cli_map.py | covered |
 | §7 / §9 (end-to-end smoke against threat-model corpus + v0.3.0 release) | S-118 | runs/cli_smoke/, scripts/aggregate_smoke.py | runs/cli_smoke/SUMMARY.md | covered |
+
+## v1.0 Arc
+
+The v1 spec (`docs/SPEC.md`) drives slices S-119..S-147 in `.ctrldoc/ROADMAP.md` phases 11–23. Each slice appends its own `| §X.Y | S-NNN | src/... | tests/... | covered |` row here when it lands, per `.ctrldoc/LOOP_PROMPT.md` Step 6. Rows are never added in `pending` state — `scripts/spec_trace_check.py` enforces this.

@@ -1,102 +1,105 @@
-# ctrldoc — Specification Digest
+# ctrldoc — Specification Digest (v1)
 
 A compact summary of `docs/SPEC.md`. Optimized for fast loading and stable content. For any detail, follow the SPEC-REF back to the full document.
 
-## The one principle (§1)
+## The one principle (§3)
 
-The LLM never sees the raw document. It sees only retrieved spans, structured findings, or distilled state. Every guarantee follows from this.
+A document is a noisy observation of a latent ontology. Reading it = jointly inferring concepts, relations, and claims. Multiple documents = noisy observations of a shared ontology — comparing them is aligning them in that shared space.
 
-## Use cases (§2)
+## Five first-principles axioms (§3)
 
-| ID | Use case |
+1. Unit of meaning = the atomic claim, not the chunk.
+2. Structure beats similarity — vectors find candidates; logic decides verdicts.
+3. Documents are graphs; collections are graphs of graphs sharing a latent ontology.
+4. Every verdict is replayable — output is an auditable proof trace.
+5. The LLM is a perception layer, not a reasoning engine.
+
+## Operations (§6, §9)
+
+| Op | Question it answers |
 |---|---|
-| UC1 | Trustworthy QA on large doc |
-| UC2 | Coverage audit (doc vs. doc) |
-| UC3 | Quality audit (doc vs. criteria) |
-| UC4 | Open-ended analytical review |
-| UC5 | Anomaly surfacing |
-| UC6 | Concept-relation mapping |
+| `qa` | What does the doc say about X — with citations? |
+| `coverage` | Does target B cover source A? Per-claim verdict + confidence. |
+| `compare` | Strengths / weaknesses / gaps across N docs. |
+| `merge` | Lossless synthesis of N docs — every claim in one output cluster. |
+| `list_check` | Per-item verdict against a doc. |
+| `map` | Render the concept graph (Mermaid / JSON-LD). |
 
-## Architecture in six layers (§3)
+All six dispatch to one engine: optimal transport on the probability-weighted claim graph.
+
+## Architecture (§5)
 
 | Layer | Purpose |
 |---|---|
-| L0 Ingest | parse, coref, NER, chunk, embed |
-| L1 Multi-view index | structural tree, dense vectors, BM25, entity index, skeleton |
-| L2 Retrieval | planner DSL, fusion, reranker, evidence pack (≤ 6k tokens) |
-| L3 Verifier | claim decomposition, independent re-retrieval, NLI, LLM judge, refusal |
-| L4 Orchestrator | stateless tasks, structured outputs, tiered routing, prompt caching, synthesis |
-| L5 Playbooks | one per use case |
+| L0 Adaptive ingest | parse, coref, NER, chunk; **schema co-induction** (NEW) |
+| L1 Multi-view index | + `claims`, `concepts`, `typed_edges` tables (NEW) |
+| L1.5 Claim graph | **span / claim / concept triplane** (NEW primitive) |
+| L2 Retrieval | dense + BM25 + entity + **personalized PageRank** (NEW) + rerank |
+| L2.5 Workspace | **shared latent ontology over N docs** (NEW) |
+| L3 Probabilistic edge inference | tuple logic + NLI + LLM judge + **paraphrase vote + ECE** (NEW) |
+| L4 Tool-using orchestrator | forced tool calls + verdict ledger (NEW shape) |
+| L5 Universal operations | `compare`/`coverage`/`merge`/`list_check`/`map`/`qa` over the engine |
+| L6 Trace renderer | proof trace: spans → claims → edges → verdict + confidence |
 
-## Two pillars (§3.1)
+## Two pillars (§4.1, preserved verbatim from v0.3)
 
-- **Stateless tasks.** Every sub-task is a fresh API call with input `{system_prompt, doc_skeleton, entity_glossary, evidence_pack, task_input}` → structured JSON output. No accumulation. Synthesis happens by reducing over structured outputs, never raw doc.
-- **Shared prompt cache.** The cacheable prefix `{system_prompt, doc_skeleton, entity_glossary}` is identical across every sub-task in a session. Fresh sessions become nearly free on the prefix.
+- **Stateless tasks.** Every sub-task is a fresh API call with input `{system_prompt, doc_skeleton, glossary, evidence, task}` → structured JSON.
+- **Shared prompt cache.** Identical prefix across sub-tasks; cache hits N times.
 
-## Data model contracts (§4.0)
+## Universal claim tuple (§6.2)
 
-Pydantic models: `Chunk`, `Section`, `Entity`, `Span`, `EvidencePack`, `Claim`, `Verdict`, `Finding`, `RelationEdge`, `Provenance`, `PlaybookOutput`. Changes require a `schema_version` bump.
+`Claim = (subject, predicate, object, polarity, modality, qualifier, span_refs, confidence)` — the logic floor. Contradiction = polarity flip. Stronger-than via qualifier ordering. Always extracted, even when adapter-specific extraction fails.
 
-## Storage (§3, §4.2)
+## Schema co-induction (§6.4)
 
-SQLite by default: `sqlite-vec` for dense vectors, `tantivy` for BM25, plain SQL for metadata. The `Store` protocol abstracts persistence — switching backends is a config change.
+Per-doc ontology *emerges* via EM loop: universal tuple as floor → LLM proposes typed nodes/edges from a primitive library → extract under schema → measure residual → re-induce if unmatched > 0.20 → cache as YAML. No hardcoded adapters.
 
-## Cross-cutting (§4.7)
+## Galois lattice for "stronger than" (§6.3)
 
-- Tokenizer: `tiktoken cl100k_base` everywhere.
-- Versioning: `schema_version`, `index_version`, `embedding_model_version` — fail-fast on mismatch.
-- Trace: every LLM call writes a JSONL record (`run_id, task_id, prompt_hash, response_hash, tokens, cost, latency, cache_hit`).
-- Budget: hard kill switch at `max_cost_usd`.
-- Resumability: checkpoint after every sub-task.
-- Provenance: every output carries run id, models used, schema version, index hash.
+Partial order via logical entailment. Operations: `join`, `meet`, `incomparable` (first-class). Bidirectional NLI on natural text; predicate logic on formal text.
 
-## Playbooks (§5)
+## Probabilistic edges + calibration (§6.5)
 
-Each is 200–500 LOC orchestrating L2–L4. Map then reduce:
+Every edge: calibrated `confidence ∈ [0,1]`. Sources: heuristic / NLI / LLM. Paraphrase voting (3–5 paraphrases) + isotonic regression → calibrated probability. **Shipped ECE per backend** with release gate `ECE ≤ 0.05`.
 
-1. **qa** — retrieve → answer → verify.
-2. **coverage_audit** — extract checklist, cluster items, judge each cluster against retrieved evidence.
-3. **quality_audit** — generate criteria, delegate to coverage_audit.
-4. **analytical_review** — generate lenses, sweep doc per lens, cluster claims, pairwise consistency check, synthesize.
-5. **anomaly_scan** — six detectors (hedge-words, asymmetry, justification gap, undefined terms, boundary silence, embedding outlier).
-6. **relation_map** — extract concepts, classify each pair, verify, aggregate to graph.
+## Optimal-transport core (§6.6)
 
-## Test families (§8.6)
+`compare`/`coverage`/`merge`/`list_check` = variants of min-cost flow on claim-pair edges weighted by `1 − NLI_entail`. Sinkhorn for soft variants. Many-to-one transport supported. `merge` loss invariant: every input claim ID → exactly one output cluster.
 
-14 families. Every test belongs to one. Coverage rule: a playbook ships only when every applicable family has ≥ 1 test.
+## Workspace (§6.7)
 
-| # | Family |
-|---|---|
-| 1 | Ingest completeness |
-| 2 | Needle-in-haystack retrieval |
-| 3 | Synthetic gold doc end-to-end |
-| 4 | Reachability invariant |
-| 5 | Negative / refusal |
-| 6 | Referential integrity (citations) |
-| 7 | Robustness / edge inputs |
-| 8 | Adversarial / security |
-| 9 | Verifier calibration |
-| 10 | Determinism / reproducibility |
-| 11 | Performance / cost gates |
-| 12 | Failure resilience |
-| 13 | Incremental update |
-| 14 | Concurrency |
+N docs share one concept lattice. Cross-doc edges (`aligned_with`, `entails_across`, `contradicts_across`, `stronger_than`) lazy + cached + linear in `|A|·k` via candidate retrieval.
 
-## Performance / cost targets (§9)
+## Tool surface (§6.10) — the MCP integration
 
-- Ingest: 30s – 2min per 10k-line doc.
-- Storage: 50 – 200 MB per 10k-line doc.
-- QA latency: 5 – 30s end-to-end.
-- Audit latency (100 items): 2 – 8 min.
-- Cost per audit: $3 – $10.
-- MacBook RAM peak: ≤ 8 GB.
+`lookup_concept`, `traverse`, `entails`, `subsumes`, `optimal_transport`, `coverage`, `compare`, `merge`, `list_check`, `map`, `qa`, `calibration`. **Forced tool calls only.** Schemas versioned.
 
-## The five non-negotiables (§13)
+## Data model (§7)
 
-1. Eval harness exists before any code that it scores.
-2. No LLM call ever sees the raw full document.
-3. Every claim is cited or refused.
-4. Every playbook is stateless per task.
-5. Storage layer is abstracted; SQLite is the MVP backend, not the architecture.
+Adds `Claim`, `Concept`, `TypedEdge`, `Workspace`, `CoverageReport`, `CoverageVerdict` to the v0.3 Pydantic models. `schema_version` 1 → 2.
 
-If any of these slip, the product loses its core guarantee.
+## Storage (§8)
+
+Adds tables: `claims`, `concepts`, `typed_edges`, `workspaces`, `cross_doc_edges`, `verdict_ledger`. Guarded by `IndexVersions` bump.
+
+## CLI surface (§9)
+
+v0.3 commands kept (now thin wrappers). v1 additions: `workspace {create|add|list|info}`, `compare`, `coverage`, `merge`, `list-check`, `graph {show|query}`, `schema {show|pin}`, `calibration`, `ledger {list|show|replay}`, `mcp serve`.
+
+## Test families (§14, kept from v0.3)
+
+14 families. Every test belongs to one. Coverage rule: an operation ships only when every applicable family has ≥ 1 test.
+
+## The 14 Non-Negotiables (§13)
+
+**v0.3 (1–5):** eval-first; LLM never sees raw doc; every claim cited or refused; every op stateless per task; storage layer abstracted.
+
+**v1 (6–14):** universal tuple always extracted; residual rate observable; edges carry calibrated confidence; ECE ≤ 0.05 release gate; merge loss invariant; cross-doc edges cite source spans both docs; orchestrator uses forced tool calls; verdict ledger append-only & replayable; MCP tool schemas versioned.
+
+## Performance / cost targets (§16 end state)
+
+Unchanged from v0.3 per-operation budgets (qa $0.10/30s, coverage_audit $5/5min, …) — see `.ctrldoc/BUDGET.md`. v1 adds: ECE backend evaluation cost (one-shot, off the hot path) and cross-doc edge computation (linear in `|A|·k`, k=5).
+
+## Out of scope for v1 (§15)
+
+Privacy mode, active learning, cross-modal claims, sheaf-theoretic global consistency, Merkle-DAG provenance, 100+ doc workspaces, formal interop (Lean/TLA). All deferred to v2.

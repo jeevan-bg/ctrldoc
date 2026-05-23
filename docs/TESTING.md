@@ -1,6 +1,6 @@
 # Testing strategy
 
-Tests in `ctrldoc` are organized around the spec's 14-family taxonomy (see [SPEC.md](SPEC.md) §8.6). Every test belongs to at least one family; the family is declared with a pytest marker.
+Tests in `ctrldoc` are organized around a 14-family taxonomy preserved verbatim from the v0.3 spec (now referenced at [SPEC.md](SPEC.md) §4.2 "Other v0.3 substrate kept verbatim"; the canonical marker list is in `pyproject.toml` under `[tool.pytest.ini_options]`). Every test belongs to at least one family; the family is declared with a pytest marker.
 
 ## Test kinds used in this project
 
