@@ -127,6 +127,7 @@ Row format:
 | §6.2 + §14 (claim-extraction eval substrate — 120 sentence→tuple pairs, P/R/F1 runner, claim_F1 >= 0.85 gate) | S-119 | src/ctrldoc/eval/claim_extraction.py | tests/test_claim_extraction_eval.py, tests/eval/claim_extraction_eval.jsonl | covered |
 | §6.6 + §14 (cross-doc coverage eval substrate — 12 target/source/per-claim-verdict tuples, accuracy + per-class P/R, per-claim accuracy >= 0.85 gate) | S-120 | src/ctrldoc/eval/cross_doc_coverage.py | tests/test_cross_doc_coverage_eval.py, tests/eval/cross_doc_coverage_eval.jsonl | covered |
 | §6.6 + §14 (compare eval substrate — 8 doc-pair strengths/weaknesses/gaps tuples, 3-label {StrengthA, StrengthB, Gap}, per-cluster accuracy + per-class P/R, accuracy >= 0.85 gate) | S-121 | src/ctrldoc/eval/compare.py | tests/test_compare_eval.py, tests/eval/compare_eval.jsonl | covered |
+| §6.6 + §14 (merge eval substrate — 6 input-docs / gold-merged tuples with cluster assignments, loss invariant hard gate + pairwise partition accuracy soft gate >= 0.85 + representative-claim match rate via best-overlap) | S-122 | src/ctrldoc/eval/merge.py | tests/test_merge_eval.py, tests/eval/merge_eval.jsonl | covered |
 
 ## v1.0 Arc
 
