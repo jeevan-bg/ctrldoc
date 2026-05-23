@@ -70,6 +70,7 @@ Row format:
 | §4.5 (tiered routing) | S-062 | src/ctrldoc/orch/routing.py | tests/test_orch_routing.py | covered |
 | §4.5 (batching shared evidence packs) | S-063 | src/ctrldoc/orch/batch.py | tests/test_orch_batch.py | covered |
 | §4.7 / §8.6 family 14 (concurrency policy) | S-064 | src/ctrldoc/orch/concurrency.py | tests/test_orch_concurrency.py | covered |
+| §4.7 (streaming progress events) | S-065 | src/ctrldoc/orch/progress.py | tests/test_orch_progress.py | covered |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
 | §4.7 (pre-commit gates) | S-002 | .pre-commit-config.yaml | tests/test_pre_commit_config.py | covered |
 | §4.7 (tokenizer) | S-003 | src/ctrldoc/tokenizer.py | tests/test_tokenizer.py | covered |
