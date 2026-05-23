@@ -1,10 +1,8 @@
 # docs/decisions/ Index — auto-generated
 
-**Generator:** `scripts/shard-decisions.sh`.
-**Source:** `docs/DECISIONS.md` (canonical append-target — public ADRs).
-**Cadence:** regenerate whenever `docs/DECISIONS.md` adds a new ADR (pre-commit `shard-decisions --check` enforces freshness).
+**Source:** `docs/DECISIONS.md` (canonical append-target — do not edit fragments by hand; regenerate from source).
 
-Each fragment is the random-access read-view of one ADR. The loop's Tier-2 step reads exactly the ADR a slice cites, e.g. `Read("docs/decisions/ADR-0002.md")`.
+Each fragment is a per-ADR read-view of `docs/DECISIONS.md`. Read the specific ADR a reference cites, e.g. `docs/decisions/ADR-0002.md`.
 
 | ADR | Source line |
 |---|---|

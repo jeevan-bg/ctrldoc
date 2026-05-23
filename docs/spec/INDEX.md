@@ -1,10 +1,8 @@
 # docs/spec/ Index — auto-generated
 
-**Generator:** `scripts/shard-spec.sh`.
-**Source:** `docs/SPEC.md` (canonical write-target).
-**Cadence:** regenerate whenever `docs/SPEC.md` is edited (pre-commit `shard-spec --check` enforces freshness).
+**Source:** `docs/SPEC.md` (canonical write-target — do not edit fragments by hand; regenerate from source).
 
-Each fragment is the random-access read-view of one section of `docs/SPEC.md`. The loop's Tier-2 step reads exactly the section a slice's SPEC-REF cites, e.g. `Read("docs/spec/6.4.md")` for §6.4.
+Each fragment is a per-section read-view of `docs/SPEC.md`. Read the specific section a reference cites, e.g. `docs/spec/6.4.md` for §6.4.
 
 | Fragment | § | Source line | Header level |
 |---|---|---|---|
