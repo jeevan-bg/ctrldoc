@@ -126,6 +126,7 @@ Row format:
 | §7 / §9 (end-to-end smoke against threat-model corpus + v0.3.0 release) | S-118 | runs/cli_smoke/, scripts/aggregate_smoke.py | runs/cli_smoke/SUMMARY.md | covered |
 | §6.2 + §14 (claim-extraction eval substrate — 120 sentence→tuple pairs, P/R/F1 runner, claim_F1 >= 0.85 gate) | S-119 | src/ctrldoc/eval/claim_extraction.py | tests/test_claim_extraction_eval.py, tests/eval/claim_extraction_eval.jsonl | covered |
 | §6.6 + §14 (cross-doc coverage eval substrate — 12 target/source/per-claim-verdict tuples, accuracy + per-class P/R, per-claim accuracy >= 0.85 gate) | S-120 | src/ctrldoc/eval/cross_doc_coverage.py | tests/test_cross_doc_coverage_eval.py, tests/eval/cross_doc_coverage_eval.jsonl | covered |
+| §6.6 + §14 (compare eval substrate — 8 doc-pair strengths/weaknesses/gaps tuples, 3-label {StrengthA, StrengthB, Gap}, per-cluster accuracy + per-class P/R, accuracy >= 0.85 gate) | S-121 | src/ctrldoc/eval/compare.py | tests/test_compare_eval.py, tests/eval/compare_eval.jsonl | covered |
 
 ## v1.0 Arc
 
