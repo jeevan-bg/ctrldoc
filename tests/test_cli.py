@@ -415,21 +415,7 @@ def test_load_dotenv_missing_file_is_no_op(tmp_path: Path) -> None:
 # --- scan moved to tests/test_cli_scan.py (S-116) ---
 
 
-# --- map ---
-
-
-def test_map_emits_stub_with_concepts_list() -> None:
-    result = runner.invoke(app, ["map", "alpha", "beta"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["inputs"]["concepts"] == ["alpha", "beta"]
-
-
-def test_map_with_no_concepts_emits_stub_with_empty_list() -> None:
-    result = runner.invoke(app, ["map"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["inputs"]["concepts"] == []
+# --- map moved to tests/test_cli_map.py (S-117) ---
 
 
 # --- python -m entry point shape ---
