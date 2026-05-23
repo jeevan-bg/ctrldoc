@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-05-23
+
+Production NLI backend landing behind the v0.1.0 protocol seam.
+
+### Added
+
+- **`DeBERTaNLIChecker` (S-051b)** — `cross-encoder/nli-deberta-v3-large`
+  behind the existing `NLIChecker` protocol seam. Lazy model load;
+  softmax-normalised `(contradiction, entailment, neutral)` head
+  with the model's `id2label` validated against the spec's
+  three-label vocabulary at load time. Integration tests skip when
+  `transformers` is absent and pull the model on first run
+  (~750 MB cached afterward). Lives in `ctrldoc.verify.nli_deberta`
+  so the heuristic ref in `ctrldoc.verify.nli` stays torch-free.
+
 ## [0.1.1] — 2026-05-23
 
 Production backend landings behind v0.1.0 protocol seams. The

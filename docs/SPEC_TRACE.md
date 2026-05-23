@@ -58,7 +58,7 @@ Row format:
 | §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | covered |
 | §4.4 (claim decomposer) | S-050 | src/ctrldoc/verify/claim_decomposer.py, src/ctrldoc/verify/claim_decomposer_anthropic.py | tests/test_claim_decomposer.py, tests/test_claim_decomposer_anthropic.py | covered |
 | §4.4 (NLI checker — interface + heuristic) | S-051 | src/ctrldoc/verify/nli.py | tests/test_nli.py | covered |
-| §4.4 (NLI — deberta-v3-large-mnli) | S-051b | src/ctrldoc/verify/nli.py | tests/test_nli.py | queued |
+| §4.4 (NLI — deberta-v3-large-mnli) | S-051b | src/ctrldoc/verify/nli_deberta.py | tests/test_verify_nli_deberta.py | covered |
 | §4.4 (LLM-judge — interface + heuristic) | S-052 | src/ctrldoc/verify/judge.py | tests/test_judge.py | covered |
 | §4.4 (LLM-judge — Qwen2.5-7B via Ollama) | S-052b | src/ctrldoc/verify/judge.py | tests/test_judge.py | queued |
 | §4.4 (tier-2 escalation) | S-053 | src/ctrldoc/verify/judge_anthropic.py, src/ctrldoc/verify/judge_escalating.py | tests/test_judge_anthropic.py, tests/test_judge_escalating.py | covered |
