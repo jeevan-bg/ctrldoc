@@ -110,3 +110,4 @@ Row format:
 | §8.6 family 13 | S-039 | src/ctrldoc/ingest/ | tests/families/test_incremental.py | pending |
 | §8.6 family 14 | S-064 | src/ctrldoc/orch/concurrency.py | tests/test_orch_concurrency.py | covered |
 | §8.7 (LLM-as-judge with bias controls) | S-089 | src/ctrldoc/eval/llm_judge.py | tests/test_llm_judge.py | covered |
+| §8.6 (cross-cutting continuous canary) | S-090 | src/ctrldoc/canary/canary.py | tests/test_canary.py, tests/canary/baselines/aurora__ingest.json | covered |
