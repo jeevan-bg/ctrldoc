@@ -71,6 +71,7 @@ Row format:
 | §4.5 (batching shared evidence packs) | S-063 | src/ctrldoc/orch/batch.py | tests/test_orch_batch.py | covered |
 | §4.7 / §8.6 family 14 (concurrency policy) | S-064 | src/ctrldoc/orch/concurrency.py | tests/test_orch_concurrency.py | covered |
 | §4.7 (streaming progress events) | S-065 | src/ctrldoc/orch/progress.py | tests/test_orch_progress.py | covered |
+| §4.7 / §8.6 family 12 (resumability checkpoints) | S-066 | src/ctrldoc/orch/checkpoint.py | tests/test_orch_checkpoint.py | covered |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
 | §4.7 (pre-commit gates) | S-002 | .pre-commit-config.yaml | tests/test_pre_commit_config.py | covered |
 | §4.7 (tokenizer) | S-003 | src/ctrldoc/tokenizer.py | tests/test_tokenizer.py | covered |
@@ -97,7 +98,7 @@ Row format:
 | §8.6 family 9 | S-055 | src/ctrldoc/verify/ | tests/families/test_verifier_calibration.py | covered |
 | §8.6 family 10 | S-087 | n/a | tests/families/test_determinism.py | pending |
 | §8.6 family 11 | S-088 | n/a | tests/families/test_perf_cost.py | pending |
-| §8.6 family 12 | S-066 | src/ctrldoc/orch/ | tests/families/test_resilience.py | pending |
+| §8.6 family 12 | S-066 | src/ctrldoc/orch/checkpoint.py | tests/test_orch_checkpoint.py | partial (checkpoint subset covered; broader resilience tracked under S-080+) |
 | §8.6 family 13 | S-039 | src/ctrldoc/ingest/ | tests/families/test_incremental.py | pending |
 | §8.6 family 14 | S-064 | src/ctrldoc/orch/concurrency.py | tests/test_orch_concurrency.py | covered |
 | §8.7 (LLM judge) | S-089 | tests/eval/judge/ | tests/eval/judge/ | pending |
