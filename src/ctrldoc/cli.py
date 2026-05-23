@@ -517,38 +517,183 @@ def qa(
 @app.command()
 def audit(
     ctx: typer.Context,
-    checklist_path: Path = typer.Argument(..., help="Checklist file (JSONL of items)."),
-    index_path: Path = typer.Option(
-        Path("./runs"),
-        "--index",
-        "-i",
-        help="Directory holding the ingested target-doc index.",
+    checklist_path: Path = typer.Option(
+        ...,
+        "--checklist",
+        "-c",
+        help="Markdown checklist file (one H2/H3 per item).",
     ),
-    kind: str = typer.Option(
-        "coverage",
-        "--kind",
-        "-k",
-        help="`coverage` (UC2) or `quality` (UC3, generates criteria first).",
+    target_path: Path = typer.Option(
+        ...,
+        "--target",
+        "-t",
+        help="Markdown target document to audit against the checklist.",
+    ),
+    doc_id: str = typer.Option(
+        "",
+        "--doc-id",
+        "-d",
+        help="Logical id for the target doc; defaults to its file stem.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Override `paths.runs_path` from the config for this run.",
     ),
 ) -> None:
-    """UC2 coverage audit / UC3 quality audit (skeleton)."""
-    _ = ctx.obj
-    if kind not in {"coverage", "quality"}:
-        typer.echo(f"error: --kind must be 'coverage' or 'quality', got {kind!r}", err=True)
-        raise typer.Exit(code=2)
-    _require_input_path(checklist_path)
-    _emit_stub(
-        command="audit",
-        inputs={
-            "checklist_path": str(checklist_path),
-            "index_path": str(index_path),
-            "kind": kind,
-        },
-        next_step=(
-            "Wire CoverageAuditPlaybook / QualityAuditPlaybook with the BackendBundle "
-            "deps and call playbook.run(items)."
-        ),
+    """UC2 coverage audit — checklist (Markdown) vs target (Markdown).
+
+    Ingests the target inline through the bundle, parses the checklist
+    into `ChecklistItem`s via a deterministic Markdown-section parser,
+    and runs `CoverageAuditPlaybook`. Per-item LLM calls route through
+    the bundle's `task_client_router` (`local` tier in thrifty,
+    `opus` in production). Emits a Markdown report grouped by verdict
+    plus a JSON payload under `<runs_path>/<run_id>/`.
+
+    The heuristic profile is rejected here: the playbook needs an LLM
+    to judge coverage, and heuristic mode has no `task_client_router`.
+    """
+    from ctrldoc.assembler import (
+        assemble_glossary,
+        assemble_skeleton,
     )
+    from ctrldoc.cli_audit import (
+        BundleRetriever,
+        parse_checklist_markdown,
+        render_coverage_markdown,
+    )
+    from ctrldoc.ingest.pipeline import ingest_document
+    from ctrldoc.orch.batch import BatchedTaskRunner
+    from ctrldoc.playbooks.coverage import CoverageAuditPlaybook
+
+    state: CliState = ctx.obj
+    _require_input_path(checklist_path)
+    _require_input_path(target_path)
+    if state.profile == "heuristic":
+        typer.echo(
+            "error: audit requires --profile thrifty|production (heuristic has no LLM seam)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    config = _load_config(state.config_path)
+    if output_dir is not None:
+        config = config.model_copy(
+            update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
+        )
+
+    target_text = target_path.read_text(encoding="utf-8")
+    doc_hash = _doc_hash_for(target_text)
+    effective_doc_id = doc_id or target_path.stem
+
+    bundle = build_bundle(config=config, profile=state.profile)
+    store, vector_index, bm25_index = _build_per_doc_backends(
+        config=config,
+        profile=state.profile,
+        doc_hash=doc_hash,
+    )
+    ingest_document(
+        source=target_path,
+        parser=MarkdownParser(),
+        coref=bundle.coref,
+        ner=bundle.ner,
+        ner_labels=_DEFAULT_NER_LABELS,
+        embedder=bundle.embedder,
+        summarizer=bundle.summarizer,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+    )
+
+    items = parse_checklist_markdown(checklist_path.read_text(encoding="utf-8"))
+    if not items:
+        typer.echo(
+            f"error: no checklist items extracted from {checklist_path} "
+            "(expected `##` or `###` Markdown headings)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    skeleton = assemble_skeleton(store)
+    glossary = assemble_glossary(store)
+    retriever = BundleRetriever(
+        bundle=bundle,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+        prefix_skeleton=skeleton,
+        prefix_glossary=glossary,
+    )
+
+    from ctrldoc.assembler import CacheablePrefix
+
+    prefix = CacheablePrefix(
+        system_prompt=_COVERAGE_AUDIT_SYSTEM_PROMPT,
+        doc_skeleton=skeleton,
+        entity_glossary=glossary,
+    )
+
+    assert bundle.task_client_router is not None  # guarded by profile check above
+    task_client = bundle.task_client_router.for_tier("local")
+    batched_runner = BatchedTaskRunner(client=task_client)
+    playbook = CoverageAuditPlaybook(
+        prefix=prefix,
+        retriever=retriever,
+        batched_runner=batched_runner,
+    )
+
+    report = playbook.run(items)
+
+    run_id = new_run_id()
+    runs_path = Path(config.paths.runs_path)
+    run_dir = runs_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    markdown = render_coverage_markdown(
+        report=report,
+        items=items,
+        checklist_path=checklist_path,
+        target_path=target_path,
+        profile=state.profile,
+        run_id=run_id,
+    )
+    payload: dict[str, object] = {
+        "command": "audit",
+        "status": "ok",
+        "run_id": run_id,
+        "checklist_path": str(checklist_path),
+        "target_path": str(target_path),
+        "target_doc_id": effective_doc_id,
+        "target_doc_hash": doc_hash,
+        "profile": state.profile,
+        "max_cost_usd": state.max_cost_usd,
+        "items_total": len(items),
+        "verdicts": [v.model_dump(mode="json") for v in report.verdicts],
+        "summary": {
+            label: sum(1 for v in report.verdicts if v.verdict == label)
+            for label in ("Covered", "Partial", "NotCovered", "Ambiguous")
+        },
+    }
+
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+_COVERAGE_AUDIT_SYSTEM_PROMPT = (
+    "You are a strict coverage auditor. For each checklist item, "
+    "decide whether the EVIDENCE supports it.\n\n"
+    "Return a JSON object mapping `id` → verdict object with this exact "
+    "shape:\n"
+    '  {"verdict": "Covered"|"Partial"|"NotCovered"|"Ambiguous",\n'
+    '   "confidence": <0.0-1.0>,\n'
+    '   "citation_chunk_ids": [<chunk-id strings copied from EVIDENCE>]}\n\n'
+    "Only cite chunk_ids that appear in the EVIDENCE. Be conservative — "
+    "if the evidence does not directly support the item, mark NotCovered "
+    "or Ambiguous. No prose outside the JSON object."
+)
 
 
 @app.command()
