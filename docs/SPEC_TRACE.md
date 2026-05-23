@@ -55,7 +55,7 @@ Row format:
 | §8.6 family 6 (referential integrity, partial) | S-044 | src/ctrldoc/retrieval/evidence.py | tests/test_evidence_pack.py | partial |
 | §4.3 (planner LLM call) | S-045 | src/ctrldoc/retrieval/planner.py, src/ctrldoc/retrieval/planner_anthropic.py | tests/test_planner.py, tests/test_planner_anthropic.py | covered |
 | §8.6 family 2 (NIAH retrieval) | S-046 | src/ctrldoc/retrieval/ | tests/families/test_niah.py | covered (BM25 + fused; dense view deferred until S-036b) |
-| §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | partial |
+| §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | covered |
 | §4.4 (claim decomposer) | S-050 | src/ctrldoc/verify/claim_decomposer.py, src/ctrldoc/verify/claim_decomposer_anthropic.py | tests/test_claim_decomposer.py, tests/test_claim_decomposer_anthropic.py | covered |
 | §4.4 (NLI checker — interface + heuristic) | S-051 | src/ctrldoc/verify/nli.py | tests/test_nli.py | covered |
 | §4.4 (NLI — deberta-v3-large-mnli) | S-051b | src/ctrldoc/verify/nli.py | tests/test_nli.py | queued |
@@ -63,6 +63,7 @@ Row format:
 | §4.4 (LLM-judge — Qwen2.5-7B via Ollama) | S-052b | src/ctrldoc/verify/judge.py | tests/test_judge.py | queued |
 | §4.4 (tier-2 escalation) | S-053 | src/ctrldoc/verify/judge_anthropic.py, src/ctrldoc/verify/judge_escalating.py | tests/test_judge_anthropic.py, tests/test_judge_escalating.py | covered |
 | §4.4 (claim verifier + repair pass) | S-054 | src/ctrldoc/verify/claim_verifier.py | tests/test_claim_verifier.py | covered |
+| §4.4 / §8.6 family 9 (verifier calibration) | S-055 | src/ctrldoc/verify/claim_verifier.py | tests/families/test_verifier_calibration.py | covered |
 | §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
 | §4.7 (pre-commit gates) | S-002 | .pre-commit-config.yaml | tests/test_pre_commit_config.py | covered |
@@ -87,7 +88,7 @@ Row format:
 | §8.6 family 6 | S-044 | src/ctrldoc/retrieval/ | tests/families/test_referential_integrity.py | pending |
 | §8.6 family 7 | S-030..S-033 | src/ctrldoc/ingest/ | tests/families/test_robustness.py | pending |
 | §8.6 family 8 | S-086 | n/a | tests/families/test_adversarial.py | pending |
-| §8.6 family 9 | S-055 | src/ctrldoc/verify/ | tests/families/test_verifier_calibration.py | pending |
+| §8.6 family 9 | S-055 | src/ctrldoc/verify/ | tests/families/test_verifier_calibration.py | covered |
 | §8.6 family 10 | S-087 | n/a | tests/families/test_determinism.py | pending |
 | §8.6 family 11 | S-088 | n/a | tests/families/test_perf_cost.py | pending |
 | §8.6 family 12 | S-066 | src/ctrldoc/orch/ | tests/families/test_resilience.py | pending |
