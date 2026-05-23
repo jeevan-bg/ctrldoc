@@ -16,7 +16,7 @@ INPUT="$(cat)"
 
 tool_name=$(printf '%s' "$INPUT" | sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 case "$tool_name" in
-  Edit|Write|MultiEdit) ;;
+  Edit|Write) ;;
   *) exit 0 ;;
 esac
 
