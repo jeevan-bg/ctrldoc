@@ -114,3 +114,4 @@ Row format:
 | §6 (CLI skeleton) | S-100 | src/ctrldoc/cli.py, src/ctrldoc/__main__.py | tests/test_cli.py | covered |
 | §6 (playbook examples) | S-101 | examples/ | tests/test_examples_smoke.py | covered |
 | §12 (README quickstart verified) | S-102 | README.md | tests/test_readme_quickstart.py | covered |
+| §7 (release v0.1.0) | S-103 | pyproject.toml, src/ctrldoc/__init__.py, CHANGELOG.md | tests/test_release_v0_1_0.py | covered |
