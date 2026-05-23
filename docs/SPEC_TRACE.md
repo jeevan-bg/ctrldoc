@@ -120,3 +120,4 @@ Row format:
 | §4.1 + §6 (CLI `ingest` wired through BackendBundle, Markdown + JSON output) | S-112 | src/ctrldoc/cli.py | tests/test_cli.py | covered |
 | §5.2 + §6 (CLI `audit` wired to CoverageAuditPlaybook, Markdown grouped by verdict) | S-113 | src/ctrldoc/cli_audit.py, src/ctrldoc/cli.py | tests/test_cli_audit.py | covered |
 | §5.1 + §6 (CLI `qa` wired to QAPlaybook + verifier, Markdown answer + citation table) | S-114 | src/ctrldoc/cli_qa.py, src/ctrldoc/cli.py | tests/test_cli_qa.py | covered |
+| §5.4 + §6 (CLI `review` wired to AnalyticalReviewPlaybook, Markdown grouped by lens) | S-115 | src/ctrldoc/cli_review.py, src/ctrldoc/cli.py | tests/test_cli_review.py | covered |

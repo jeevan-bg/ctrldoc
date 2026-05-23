@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.6] — 2026-05-23
+
+### Added
+
+- `ctrldoc review <doc_type> --target <md>` is wired end-to-end
+  through `AnalyticalReviewPlaybook` (UC4). Enumerates the
+  canonical 5-lens set via `HeuristicLensGenerator`, fans out one
+  LLM sweep per lens through the bundle's `local` tier (Ollama
+  Qwen in thrifty), then a single synthesis call routed through
+  the `opus` tier — the only Opus call per playbook run in
+  thrifty mode.
+- `LLMLensSweeper` (`src/ctrldoc/cli_review.py`) implements the
+  `LensSweeper` protocol against the shared `BundleRetriever`.
+  Hallucinated citation chunk_ids are silently dropped; the
+  sweeper short-circuits to an empty result when retrieval
+  returns no spans.
+- `render_review_markdown` emits the synthesis narrative
+  (headline + summary + sections) then per-lens groups ordered
+  by severity (critical → warn → info), plus a per-lens summary
+  table at the foot.
+
+### Notes
+
+- Heuristic profile rejected for `review` (no LLM seam).
+- Two obsolete stub-style review tests removed from
+  `tests/test_cli.py`.
+
 ## [0.2.5] — 2026-05-23
 
 ### Added
