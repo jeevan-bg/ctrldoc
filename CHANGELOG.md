@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-05-23
+
+Final production-backend landing — every v0.1.0 protocol seam now
+has a real wiring behind it.
+
+### Added
+
+- **`FastCorefResolver` (S-034b)** — `fastcoref` (LingMess) behind
+  the existing `CorefResolver` protocol seam. Lazy model load on
+  first `resolve()` call; the canonical mention per cluster is
+  picked as the longest span (ties broken by earliest position);
+  non-canonical mentions are rewritten right-to-left so char
+  offsets stay valid through the rewrite. Empty / whitespace-only
+  / no-anaphora inputs short-circuit to a passthrough. Eight
+  integration tests skip cleanly when `fastcoref` is absent and
+  cover protocol conformance, pronoun resolution, multi-cluster
+  rewrites, determinism, and length-non-decreasing.
+
 ## [0.1.5] — 2026-05-23
 
 Production persistent vector index landing behind the v0.1.0
