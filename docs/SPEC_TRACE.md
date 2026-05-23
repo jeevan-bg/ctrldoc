@@ -102,7 +102,7 @@ Row format:
 | §8.6 family 5 | S-054 + S-082 | src/ctrldoc/verify/ | tests/families/test_refusal.py | pending |
 | §8.6 family 6 | S-044 | src/ctrldoc/retrieval/ | tests/families/test_referential_integrity.py | pending |
 | §8.6 family 7 | S-030..S-033 | src/ctrldoc/ingest/ | tests/families/test_robustness.py | pending |
-| §8.6 family 8 | S-086 | n/a | tests/families/test_adversarial.py | pending |
+| §8.5 / §8.6 family 8 (adversarial detectors + invariants) | S-086 | src/ctrldoc/security/adversarial.py | tests/families/test_adversarial.py | covered |
 | §8.6 family 9 | S-055 | src/ctrldoc/verify/ | tests/families/test_verifier_calibration.py | covered |
 | §8.6 family 10 | S-087 | n/a | tests/families/test_determinism.py | pending |
 | §8.6 family 11 | S-088 | n/a | tests/families/test_perf_cost.py | pending |
