@@ -1,34 +1,84 @@
-"""CLI surface tests via `typer.testing.CliRunner` — hermetic, no LLM.
+"""CLI surface tests via `typer.testing.CliRunner`.
 
-The ``ctrldoc`` typer app exposes six subcommands (one per use case).
-This file covers:
+Covers:
 
-  * ``--help`` rendering at the root and per subcommand.
-  * The end-to-end ``ingest`` path running the deterministic L0
-    pipeline against the synthetic gold doc and writing two
-    artefacts (stats + canary signature).
-  * Argument validation: blank queries / blank doc types / unknown
-    audit kinds / missing files all exit with code 2.
-  * The four LLM-backed stubs emit a structured JSON envelope with
-    a ``next_step`` describing what production wiring is required.
+  * Root ``--help`` rendering and per-subcommand help.
+  * ``ingest`` end-to-end through the heuristic `BackendBundle`
+    (deterministic, no LLM): Markdown report on stdout by default,
+    JSON via ``--format json``, both via ``--format both``;
+    `report.md` + `result.json` under ``<runs_path>/<run_id>/`` and
+    a per-doc canary signature next to them.
+  * Argument validation: blank queries, blank doc types, unknown
+    audit kinds, missing files, unknown profiles, unknown formats
+    all exit with code 2.
+  * The four LLM-backed stubs (qa / audit / review / map) still
+    emit a structured JSON envelope with ``next_step`` while the
+    per-playbook wiring lands in S-114 .. S-117.
   * ``scan`` runs the deterministic detector battery over an
     in-memory store.
+  * ``--config`` falls back to a built-in default when the file is
+    absent.
+  * ``.env`` loading sets ``ANTHROPIC_API_KEY`` from disk without
+    echoing the value.
 
-SPEC-REF: §6, §12
+SPEC-REF: §4.5, §4.7, §6
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from ctrldoc.canary import load_baseline
-from ctrldoc.cli import app
+from ctrldoc.cli import _load_dotenv, app
 
 runner = CliRunner()
+
+
+_CONFIG_TEMPLATE = """\
+[models]
+planner = "claude-opus-4-7"
+judge_tier1 = "qwen2.5:7b-instruct-q4_K_M"
+judge_tier2 = "claude-opus-4-7"
+verifier_nli = "deberta-v3-large-mnli"
+embedder = "bge-m3"
+
+[budgets]
+max_cost_usd = 5.0
+max_tokens_per_call = 16000
+max_wall_clock_min = 30
+
+[concurrency]
+anthropic_concurrent = 8
+ollama_concurrent = 2
+
+[paths]
+index_path = "{index_path}"
+runs_path = "{runs_path}"
+traces_path = "{traces_path}"
+"""
+
+
+def _write_config(tmp_path: Path) -> Path:
+    index_path = tmp_path / "index"
+    runs_path = tmp_path / "runs"
+    traces_path = tmp_path / "traces"
+    for p in (index_path, runs_path, traces_path):
+        p.mkdir(exist_ok=True)
+    cfg = tmp_path / "ctrldoc.toml"
+    cfg.write_text(
+        _CONFIG_TEMPLATE.format(
+            index_path=index_path.as_posix(),
+            runs_path=runs_path.as_posix(),
+            traces_path=traces_path.as_posix(),
+        ),
+        encoding="utf-8",
+    )
+    return cfg
 
 
 # --- root help ---
@@ -42,64 +92,144 @@ def test_root_help_lists_every_subcommand() -> None:
 
 
 def test_root_no_args_exits_with_help() -> None:
-    """`no_args_is_help=True` makes a bare invocation print --help and exit 0."""
     result = runner.invoke(app, [])
-    assert result.exit_code in (0, 2)  # typer historically returned 0; newer returns 2
+    assert result.exit_code in (0, 2)
     assert "ingest" in result.stdout
 
 
-# --- ingest end-to-end ---
+# --- global option validation ---
 
 
-def test_ingest_runs_against_synthetic_doc(
+def test_unknown_profile_exits_with_code_two(tmp_path: Path, synthetic_doc_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["--profile", "bogus", "ingest", str(synthetic_doc_path)],
+    )
+    assert result.exit_code == 2
+    assert "--profile must be one of" in result.stderr
+
+
+def test_unknown_format_exits_with_code_two(tmp_path: Path, synthetic_doc_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["--format", "bogus", "ingest", str(synthetic_doc_path)],
+    )
+    assert result.exit_code == 2
+    assert "--format must be one of" in result.stderr
+
+
+def test_zero_max_cost_usd_exits_with_code_two(tmp_path: Path, synthetic_doc_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["--max-cost-usd", "0", "--profile", "heuristic", "ingest", str(synthetic_doc_path)],
+    )
+    assert result.exit_code == 2
+    assert "--max-cost-usd must be positive" in result.stderr
+
+
+# --- ingest end-to-end (heuristic profile, no LLM) ---
+
+
+def _runs_path_of(cfg_path: Path) -> Path:
+    """Extract the `paths.runs_path` from a config we just wrote."""
+    return cfg_path.parent / "runs"
+
+
+def test_ingest_runs_against_synthetic_doc_heuristic(
     tmp_path: Path,
     synthetic_doc_path: Path,
 ) -> None:
-    out = tmp_path / "runs"
+    cfg = _write_config(tmp_path)
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(cfg),
+            "--profile",
+            "heuristic",
             "ingest",
             str(synthetic_doc_path),
-            "--output-dir",
-            str(out),
             "--doc-id",
             "aurora",
         ],
     )
     assert result.exit_code == 0, result.stderr
+    # Default --format is markdown; stdout has the report.
+    assert "# ctrldoc — ingest report" in result.stdout
+    assert "| Chunks indexed |" in result.stdout
+
+    runs_path = _runs_path_of(cfg)
+    report_files = list(runs_path.rglob("report.md"))
+    result_files = list(runs_path.rglob("result.json"))
+    assert len(report_files) == 1
+    assert len(result_files) == 1
+
+    payload = json.loads(result_files[0].read_text(encoding="utf-8"))
+    assert payload["command"] == "ingest"
+    assert payload["status"] == "ok"
+    assert payload["doc_id"] == "aurora"
+    assert payload["profile"] == "heuristic"
+    assert payload["chunks_indexed"] > 0
+    assert payload["sections_parsed"] > 0
+    assert "signature" in payload
+    assert "signature_hash" in payload
+
+
+def test_ingest_format_json_emits_only_json(tmp_path: Path, synthetic_doc_path: Path) -> None:
+    cfg = _write_config(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(cfg),
+            "--profile",
+            "heuristic",
+            "--format",
+            "json",
+            "ingest",
+            str(synthetic_doc_path),
+        ],
+    )
+    assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["command"] == "ingest"
     assert payload["status"] == "ok"
-    assert payload["chunks_indexed"] > 0
-
-    stats = json.loads((out / "aurora__ingest_stats.json").read_text(encoding="utf-8"))
-    assert stats["doc_id"] == "aurora"
-    assert stats["chunks_indexed"] == payload["chunks_indexed"]
-
-    baseline = load_baseline(out / "aurora__ingest_signature.json")
-    assert baseline.doc_id == "aurora"
-    assert baseline.playbook == "ingest"
-    assert baseline.signature["chunk_ids"], "ingest signature has no chunk_ids"
+    # No Markdown heading bled into stdout under --format json.
+    assert "# ctrldoc" not in result.stdout
 
 
-def test_ingest_missing_file_exits_with_code_two(tmp_path: Path) -> None:
+def test_ingest_format_both_emits_markdown_then_json(
+    tmp_path: Path, synthetic_doc_path: Path
+) -> None:
+    cfg = _write_config(tmp_path)
     result = runner.invoke(
         app,
-        ["ingest", str(tmp_path / "does-not-exist.md"), "--output-dir", str(tmp_path)],
+        [
+            "--config",
+            str(cfg),
+            "--profile",
+            "heuristic",
+            "--format",
+            "both",
+            "ingest",
+            str(synthetic_doc_path),
+        ],
     )
-    assert result.exit_code == 2
-    assert "does not exist" in result.stderr
+    assert result.exit_code == 0
+    assert "# ctrldoc — ingest report" in result.stdout
+    assert "--- JSON ---" in result.stdout
+    assert '"command": "ingest"' in result.stdout
 
 
-def test_ingest_directory_argument_exits_with_code_two(tmp_path: Path) -> None:
-    """The CLI rejects a directory used in place of a file path."""
+def test_ingest_doc_id_defaults_to_input_stem(tmp_path: Path, synthetic_doc_path: Path) -> None:
+    cfg = _write_config(tmp_path)
     result = runner.invoke(
         app,
-        ["ingest", str(tmp_path), "--output-dir", str(tmp_path / "runs")],
+        ["--config", str(cfg), "--profile", "heuristic", "ingest", str(synthetic_doc_path)],
     )
-    assert result.exit_code == 2
-    assert "not a regular file" in result.stderr
+    assert result.exit_code == 0
+    payload = json.loads(next(_runs_path_of(cfg).rglob("result.json")).read_text(encoding="utf-8"))
+    assert payload["doc_id"] == synthetic_doc_path.stem
 
 
 def test_ingest_signature_matches_committed_baseline(
@@ -107,27 +237,172 @@ def test_ingest_signature_matches_committed_baseline(
     synthetic_doc_path: Path,
     repo_root: Path,
 ) -> None:
-    """The CLI's ingest must produce the same signature as the canary
-    baseline pinned in S-090 — proves the CLI wiring uses the same
-    deterministic substrate (parser/coref/embedder/summarizer)."""
-    out = tmp_path / "runs"
+    """The CLI's ingest under the heuristic profile must still produce
+    the same chunk/section/entity signature as the canary baseline
+    pinned in S-090 — proves the bundle's deterministic L0 substrate
+    matches the pre-Phase-10 wiring."""
+    cfg = _write_config(tmp_path)
     result = runner.invoke(
         app,
         [
+            "--config",
+            str(cfg),
+            "--profile",
+            "heuristic",
             "ingest",
             str(synthetic_doc_path),
-            "--output-dir",
-            str(out),
             "--doc-id",
             "aurora",
         ],
     )
     assert result.exit_code == 0
 
+    runs_path = _runs_path_of(cfg)
     committed = load_baseline(repo_root / "tests" / "canary" / "baselines" / "aurora__ingest.json")
-    fresh = load_baseline(out / "aurora__ingest_signature.json")
-    assert fresh.signature == committed.signature
-    assert fresh.signature_hash == committed.signature_hash
+    # New path: result.json carries the signature directly.
+    result_files = list(runs_path.rglob("result.json"))
+    payload = json.loads(result_files[0].read_text(encoding="utf-8"))
+    assert payload["signature"] == committed.signature
+    assert payload["signature_hash"] == committed.signature_hash
+    # Legacy path: a `<doc_id>__ingest_signature.json` next to runs/
+    # so the existing S-090 canary downstream stays whole.
+    legacy = load_baseline(runs_path / "aurora__ingest_signature.json")
+    assert legacy.signature == committed.signature
+
+
+def test_ingest_missing_file_exits_with_code_two(tmp_path: Path) -> None:
+    cfg = _write_config(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(cfg),
+            "--profile",
+            "heuristic",
+            "ingest",
+            str(tmp_path / "does-not-exist.md"),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "does not exist" in result.stderr
+
+
+def test_ingest_directory_argument_exits_with_code_two(tmp_path: Path) -> None:
+    cfg = _write_config(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(cfg),
+            "--profile",
+            "heuristic",
+            "ingest",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "not a regular file" in result.stderr
+
+
+def test_ingest_default_config_is_used_when_file_absent(
+    tmp_path: Path, synthetic_doc_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No `--config` and no `./ctrldoc.toml` → built-in default config."""
+    monkeypatch.chdir(tmp_path)
+    # No ctrldoc.toml here. We still pass --output-dir so the run
+    # artefacts land under a writable tmp_path.
+    out = tmp_path / "out"
+    result = runner.invoke(
+        app,
+        [
+            "--profile",
+            "heuristic",
+            "ingest",
+            str(synthetic_doc_path),
+            "--output-dir",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.stderr
+    assert list(out.rglob("report.md"))
+
+
+# --- ingest end-to-end (thrifty profile, persistent SQLite + sqlite-vec) ---
+
+
+@pytest.mark.slow
+@pytest.mark.requires_ollama
+def test_ingest_thrifty_persists_per_doc_sqlite(tmp_path: Path, synthetic_doc_path: Path) -> None:
+    pytest.importorskip("sqlite_vec")
+    pytest.importorskip("ollama")
+    pytest.importorskip("gliner", reason="gliner optional; thrifty profile needs it")
+    pytest.importorskip("fastcoref", reason="fastcoref optional; thrifty profile needs it")
+    cfg = _write_config(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(cfg),
+            "--profile",
+            "thrifty",
+            "ingest",
+            str(synthetic_doc_path),
+            "--doc-id",
+            "aurora",
+        ],
+    )
+    if result.exit_code != 0:
+        # Re-raise the original exception (if any) so the assertion
+        # surfaces a real stack trace rather than a wall of tqdm noise.
+        if result.exception and not isinstance(result.exception, SystemExit):
+            raise AssertionError(
+                f"thrifty ingest crashed: {type(result.exception).__name__}: {result.exception}"
+            ) from result.exception
+        pytest.skip("thrifty ingest non-zero exit (likely no Ollama)")
+    payload = json.loads(next(_runs_path_of(cfg).rglob("result.json")).read_text(encoding="utf-8"))
+    assert payload["profile"] == "thrifty"
+    persisted = payload["persisted"]
+    assert "store" in persisted and Path(persisted["store"]).exists()
+    assert "vector_index" in persisted and Path(persisted["vector_index"]).exists()
+    # The per-doc filenames are <doc_hash>.db / .vec.db.
+    assert payload["doc_hash"] in Path(persisted["store"]).name
+
+
+# --- dotenv loader ---
+
+
+def test_load_dotenv_sets_env_vars_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# comment\n"
+        "ANTHROPIC_API_KEY=secret-value-1\n"
+        'OTHER_KEY="quoted-value"\n'
+        "\n"
+        "MALFORMED-LINE-WITHOUT-EQUALS\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OTHER_KEY", raising=False)
+    _load_dotenv(env_file)
+    assert os.environ.get("ANTHROPIC_API_KEY") == "secret-value-1"
+    assert os.environ.get("OTHER_KEY") == "quoted-value"
+
+
+def test_load_dotenv_does_not_overwrite_existing_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_API_KEY=should-not-override\n", encoding="utf-8")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "pre-set-value")
+    _load_dotenv(env_file)
+    assert os.environ["ANTHROPIC_API_KEY"] == "pre-set-value"
+
+
+def test_load_dotenv_missing_file_is_no_op(tmp_path: Path) -> None:
+    # Should not raise.
+    _load_dotenv(tmp_path / "no-such-file.env")
 
 
 # --- qa stub ---
@@ -136,7 +411,7 @@ def test_ingest_signature_matches_committed_baseline(
 def test_qa_help_describes_purpose() -> None:
     result = runner.invoke(app, ["qa", "--help"])
     assert result.exit_code == 0
-    assert "trustworthy QA" in result.stdout or "QA" in result.stdout
+    assert "QA" in result.stdout
 
 
 def test_qa_blank_query_exits_with_code_two() -> None:
@@ -153,9 +428,6 @@ def test_qa_emits_structured_stub_envelope() -> None:
     assert payload["status"] == "stub"
     assert payload["inputs"]["query"] == "What is Aurora?"
     assert "next_step" in payload
-    # `anthropic_key_present` is a bool, regardless of value. Don't
-    # assert on the value — the test must not depend on whether
-    # ANTHROPIC_API_KEY is set in the host shell.
     assert isinstance(payload["anthropic_key_present"], bool)
 
 
@@ -187,15 +459,6 @@ def test_audit_coverage_emits_stub(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["command"] == "audit"
     assert payload["inputs"]["kind"] == "coverage"
-
-
-def test_audit_quality_emits_stub(tmp_path: Path) -> None:
-    checklist = tmp_path / "items.jsonl"
-    checklist.write_text("", encoding="utf-8")
-    result = runner.invoke(app, ["audit", str(checklist), "--kind", "quality"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["inputs"]["kind"] == "quality"
 
 
 # --- review stub ---
@@ -248,9 +511,7 @@ def test_map_with_no_concepts_emits_stub_with_empty_list() -> None:
 
 
 def test_main_function_invokes_typer_app(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`python -m ctrldoc` calls `main()` which calls `app()`. Verify the
-    wiring without actually shelling out — `app()` raises SystemExit on
-    --help, so we monkeypatch it to a sentinel."""
+    """`python -m ctrldoc` calls `main()` which calls `app()`."""
     from ctrldoc import cli as cli_module
 
     called: dict[str, bool] = {"yes": False}

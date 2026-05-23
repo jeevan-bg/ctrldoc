@@ -76,10 +76,21 @@ def test_readme_quickstart_step_1_ingest_succeeds(
     repo_root: Path,
     tmp_path: Path,
 ) -> None:
-    """Step 1: ingest the synthetic doc through the CLI."""
+    """Step 1: ingest the synthetic doc through the CLI.
+
+    Matches the README's `ctrldoc --profile heuristic ingest …`
+    invocation: the heuristic profile keeps the test hermetic (no
+    LLM, no Ollama). Adds ``--format json`` so this test can
+    inspect the structured payload — the README itself leaves it
+    on the default Markdown.
+    """
     result = runner.invoke(
         app,
         [
+            "--profile",
+            "heuristic",
+            "--format",
+            "json",
             "ingest",
             str(repo_root / "tests" / "fixtures" / "synthetic" / "gold_doc.md"),
             "--output-dir",

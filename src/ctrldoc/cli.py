@@ -1,52 +1,80 @@
 # ruff: noqa: B008 — typer's CLI declaration idiom requires calling
 # `typer.Argument(...)` / `typer.Option(...)` in parameter defaults.
-"""ctrldoc CLI — typer skeleton wiring the six playbooks.
+"""ctrldoc CLI — typer app wiring the six playbooks.
 
 Subcommands (one per use case from §5):
 
   - ``ingest`` — run the L0 pipeline against a source doc and persist
-    the index. End-to-end deterministic; no LLM needed.
-  - ``qa`` — UC1 trustworthy QA.
-  - ``audit`` — UC2 coverage audit / UC3 quality audit.
-  - ``review`` — UC4 analytical review.
-  - ``scan`` — UC5 anomaly scan (deterministic detectors today;
-    LLM-backed detectors land later).
-  - ``map`` — UC6 concept relation map.
+    the per-doc index (SQLiteStore + sqlite-vec + Tantivy BM25).
+  - ``qa`` — UC1 trustworthy QA (skeleton; wired in S-114).
+  - ``audit`` — UC2 coverage audit / UC3 quality audit (skeleton).
+  - ``review`` — UC4 analytical review (skeleton).
+  - ``scan`` — UC5 anomaly scan (deterministic detectors today).
+  - ``map`` — UC6 concept relation map (skeleton).
 
-The five LLM-backed subcommands are intentionally skeletal in this
-slice: they validate their arguments and report which production
-wiring is required. The full per-playbook driver wiring lands in
-later slices (examples in S-101, README quickstart in S-102).
+Every subcommand sees a `CliState` populated by the global
+``@app.callback``: ``--config`` path, ``--profile``, ``--format``
+(markdown / json / both), ``--max-cost-usd``. ``.env`` is loaded
+once at callback entry; ``ANTHROPIC_API_KEY`` is never echoed.
 
-SPEC-REF: §6, §12
+SPEC-REF: §4.5, §4.7, §5, §6
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import typer
 
+from ctrldoc.backends import PROFILES, Profile, build_bundle
 from ctrldoc.canary import CanaryBaseline, save_baseline
-from ctrldoc.ingest.coref import IdentityCorefResolver
-from ctrldoc.ingest.embedder import HashEmbedder
-from ctrldoc.ingest.ner import StubNERTagger
+from ctrldoc.config import (
+    BudgetsConfig,
+    ConcurrencyConfig,
+    Config,
+    ModelsConfig,
+    PathsConfig,
+)
 from ctrldoc.ingest.parser import MarkdownParser
-from ctrldoc.ingest.pipeline import ingest_document
-from ctrldoc.ingest.summarizer import HeuristicSummarizer
+from ctrldoc.ingest.pipeline import IngestStats, ingest_document
 from ctrldoc.playbooks.anomaly import (
     AnomalyScanPlaybook,
     EmptySummaryDetector,
     HedgeWordDetector,
 )
 from ctrldoc.provenance import new_run_id
-from ctrldoc.store.bm25 import TantivyBM25Index
+from ctrldoc.store import Store
+from ctrldoc.store.bm25 import BM25Index, TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore
-from ctrldoc.store.vectors import InMemoryVectorIndex
+from ctrldoc.store.vectors import InMemoryVectorIndex, VectorIndex
 
-DEFAULT_EMBEDDING_DIM = 32
+OutputFormat = Literal["markdown", "json", "both"]
+_OUTPUT_FORMATS: tuple[OutputFormat, ...] = ("markdown", "json", "both")
+
+_HEURISTIC_EMBED_DIM = 32
+_BGE_M3_EMBED_DIM = 1024
+_DEFAULT_NER_LABELS = ["person", "system", "concept"]
+
+_DEFAULT_RUNS_PATH = Path("./runs")
+_DEFAULT_INDEX_PATH = Path("./ctrldoc-index")
+_DEFAULT_TRACES_PATH = Path("./traces")
+_DEFAULT_MAX_COST_USD = 5.0
+
+
+@dataclass(frozen=True)
+class CliState:
+    """Per-invocation state populated by the global ``@app.callback``."""
+
+    config_path: Path
+    profile: Profile
+    output_format: OutputFormat
+    max_cost_usd: float
+
 
 app = typer.Typer(
     add_completion=False,
@@ -58,6 +86,69 @@ app = typer.Typer(
 )
 
 
+# --- shared helpers ---
+
+
+def _load_dotenv(path: Path = Path(".env")) -> None:
+    """Manual KEY=VALUE parser; sets entries into `os.environ` if not already set.
+
+    Never echoes a value back to the user. Lines that do not parse as
+    `KEY=VALUE` (comments, blanks, malformed) are silently skipped.
+    """
+    if not path.exists() or not path.is_file():
+        return
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if value and value[0] in ("'", '"') and value[-1] == value[0]:
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _default_config() -> Config:
+    """A built-in default `Config` used when no `ctrldoc.toml` is present.
+
+    Lets the CLI work out of the box from any working directory; the
+    user can override any of these by writing a project-local
+    ``ctrldoc.toml`` and passing ``--config``.
+    """
+    return Config(
+        models=ModelsConfig(
+            planner="claude-opus-4-7",
+            judge_tier1="qwen2.5:7b-instruct-q4_K_M",
+            judge_tier2="claude-opus-4-7",
+            verifier_nli="deberta-v3-large-mnli",
+            embedder="bge-m3",
+        ),
+        budgets=BudgetsConfig(
+            max_cost_usd=_DEFAULT_MAX_COST_USD,
+            max_tokens_per_call=16000,
+            max_wall_clock_min=30,
+        ),
+        concurrency=ConcurrencyConfig(anthropic_concurrent=8, ollama_concurrent=2),
+        paths=PathsConfig(
+            index_path=_DEFAULT_INDEX_PATH,
+            runs_path=_DEFAULT_RUNS_PATH,
+            traces_path=_DEFAULT_TRACES_PATH,
+        ),
+    )
+
+
+def _load_config(path: Path) -> Config:
+    if path.exists():
+        return Config.load(path)
+    return _default_config()
+
+
 def _require_input_path(path: Path) -> None:
     if not path.exists():
         typer.echo(f"error: input file {path} does not exist", err=True)
@@ -67,12 +158,134 @@ def _require_input_path(path: Path) -> None:
         raise typer.Exit(code=2)
 
 
-def _require_anthropic_key() -> bool:
-    """Return True if `ANTHROPIC_API_KEY` is set (.env is loaded by the host).
+def _doc_hash_for(text: str) -> str:
+    """16-char hex prefix of sha256 over the document text.
 
-    Emits a structured message to stderr when missing — the message
-    does *not* echo the value. The CLI checks presence only.
+    Short enough to embed in filenames, long enough that two distinct
+    docs in a per-user run dir won't collide.
     """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _per_doc_index_dir(config: Config, doc_hash: str) -> Path:
+    base = Path(config.paths.runs_path) / "indexes"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _build_per_doc_backends(
+    *,
+    config: Config,
+    profile: Profile,
+    doc_hash: str,
+) -> tuple[Store, VectorIndex, BM25Index]:
+    """Per-doc store / vector_index / bm25_index sized to the profile.
+
+    Heuristic profile stays in-memory for the store + vector index so
+    unit tests don't depend on sqlite-vec; thrifty and production
+    profiles persist the SQLite + sqlite-vec files at
+    ``<runs_path>/indexes/<doc_hash>.db`` and ``.vec.db``. BM25 is
+    always Tantivy (file-backed) — it's the same regardless of
+    profile.
+    """
+    index_dir = _per_doc_index_dir(config, doc_hash)
+    bm25_path = index_dir / f"{doc_hash}.bm25"
+    if profile == "heuristic":
+        return (
+            InMemoryStore(),
+            InMemoryVectorIndex(dimension=_HEURISTIC_EMBED_DIM),
+            TantivyBM25Index(path=bm25_path),
+        )
+    # thrifty / production share persistence; the LLM seams above are
+    # what split between them.
+    from ctrldoc.store.sqlite import SQLiteStore
+    from ctrldoc.store.vectors_sqlite_vec import SqliteVecVectorIndex
+
+    return (
+        SQLiteStore(index_dir / f"{doc_hash}.db"),
+        SqliteVecVectorIndex(
+            dimension=_BGE_M3_EMBED_DIM,
+            path=str(index_dir / f"{doc_hash}.vec.db"),
+        ),
+        TantivyBM25Index(path=bm25_path),
+    )
+
+
+def _emit_output(state: CliState, *, markdown: str, payload: dict[str, object]) -> None:
+    """Render the CLI output per the active ``--format`` mode.
+
+    - ``markdown`` (default): print the Markdown report to stdout.
+    - ``json``: print the JSON payload to stdout (no Markdown).
+    - ``both``: print Markdown then a ``\\n--- JSON ---\\n`` separator
+      followed by the JSON payload.
+    """
+    if state.output_format == "json":
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    if state.output_format == "both":
+        typer.echo(markdown)
+        typer.echo("\n--- JSON ---")
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    typer.echo(markdown)
+
+
+# --- global callback ---
+
+
+@app.callback()
+def _global_callback(
+    ctx: typer.Context,
+    config: Path = typer.Option(
+        Path("ctrldoc.toml"),
+        "--config",
+        help="Path to ctrldoc.toml; falls back to built-in defaults when absent.",
+    ),
+    profile: str = typer.Option(
+        "thrifty",
+        "--profile",
+        "-p",
+        help=f"Backend profile; one of {', '.join(PROFILES)}.",
+    ),
+    output_format: str = typer.Option(
+        "markdown",
+        "--format",
+        "-f",
+        help="Output format: markdown | json | both.",
+    ),
+    max_cost_usd: float = typer.Option(
+        _DEFAULT_MAX_COST_USD,
+        "--max-cost-usd",
+        help="Hard kill switch — abort the run if estimated cost exceeds this.",
+    ),
+) -> None:
+    """Populate `ctx.obj` with `CliState`. Runs before every subcommand."""
+    _load_dotenv()
+    if profile not in PROFILES:
+        typer.echo(
+            f"error: --profile must be one of {PROFILES}, got {profile!r}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if output_format not in _OUTPUT_FORMATS:
+        typer.echo(
+            f"error: --format must be one of {_OUTPUT_FORMATS}, got {output_format!r}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if max_cost_usd <= 0:
+        typer.echo("error: --max-cost-usd must be positive", err=True)
+        raise typer.Exit(code=2)
+    ctx.obj = CliState(
+        config_path=config,
+        profile=profile,
+        output_format=output_format,
+        max_cost_usd=max_cost_usd,
+    )
+
+
+def _anthropic_key_present() -> bool:
+    """Presence check only — never echoes the value."""
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
@@ -82,13 +295,13 @@ def _emit_stub(
     inputs: dict[str, object],
     next_step: str,
 ) -> None:
-    """Print a structured JSON envelope describing the stub outcome."""
+    """Structured JSON envelope describing a stub command outcome."""
     payload = {
         "command": command,
         "status": "stub",
         "inputs": inputs,
         "next_step": next_step,
-        "anthropic_key_present": _require_anthropic_key(),
+        "anthropic_key_present": _anthropic_key_present(),
     }
     typer.echo(json.dumps(payload, indent=2))
 
@@ -96,72 +309,174 @@ def _emit_stub(
 # --- ingest ---
 
 
+def _render_ingest_markdown(
+    *,
+    input_path: Path,
+    profile: Profile,
+    run_id: str,
+    doc_id: str,
+    doc_hash: str,
+    stats: IngestStats,
+    persisted_paths: dict[str, str],
+) -> str:
+    paths_rendered = "\n".join(f"- `{label}` → `{p}`" for label, p in persisted_paths.items())
+    return (
+        "# ctrldoc — ingest report\n"
+        "\n"
+        f"- **Source**: `{input_path}`\n"
+        f"- **Document ID**: `{doc_id}`\n"
+        f"- **Document hash**: `{doc_hash}`\n"
+        f"- **Profile**: `{profile}`\n"
+        f"- **Run ID**: `{run_id}`\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "| Metric | Count |\n"
+        "|---|---:|\n"
+        f"| Sections parsed | {stats.sections_parsed} |\n"
+        f"| Chunks indexed | {stats.chunks_indexed} |\n"
+        f"| Entities indexed | {stats.entities_indexed} |\n"
+        f"| Embedded tokens | {stats.embedded_tokens} |\n"
+        "\n"
+        "## Persisted artifacts\n"
+        "\n"
+        f"{paths_rendered}\n"
+    )
+
+
 @app.command()
 def ingest(
+    ctx: typer.Context,
     input_path: Path = typer.Argument(
         ...,
-        exists=False,  # checked manually for a clearer error message
+        exists=False,
         help="Path to the source document (Markdown today).",
     ),
-    output_dir: Path = typer.Option(
-        Path("./runs"),
-        "--output-dir",
-        "-o",
-        help="Directory where stats + index baseline will be written.",
-    ),
     doc_id: str = typer.Option(
-        "doc",
+        "",
         "--doc-id",
         "-d",
-        help="Logical id for this document (used in the run artefacts).",
+        help="Logical id; defaults to the file stem.",
     ),
-    embedding_dim: int = typer.Option(
-        DEFAULT_EMBEDDING_DIM,
-        "--embedding-dim",
-        help="HashEmbedder dimension. 32 is the default test wiring.",
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Override `paths.runs_path` from the config for this run.",
     ),
 ) -> None:
-    """Ingest a document through the deterministic L0 pipeline.
+    """Ingest a document end-to-end through the bundle's L0 pipeline.
 
-    Writes two artefacts to `output_dir`:
-
-      * ``{doc_id}__ingest_stats.json``  — chunk / section / entity counts.
-      * ``{doc_id}__ingest_signature.json`` — pinnable canary signature.
+    Heuristic profile uses `HashEmbedder` + `InMemoryStore` /
+    `InMemoryVectorIndex` (no LLM, no Ollama) — the test-friendly
+    path. Thrifty and production profiles use `OllamaEmbedder`
+    (bge-m3) + `SQLiteStore` + `sqlite-vec`. BM25 is `TantivyBM25Index`
+    on every profile. The per-doc index lives under
+    ``<runs_path>/indexes/<doc_hash>.{db,vec.db,bm25/}``; the
+    per-run report + result.json land in ``<runs_path>/<run_id>/``.
     """
     _require_input_path(input_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    if output_dir is not None:
+        config = config.model_copy(
+            update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
+        )
 
-    run_id = new_run_id()
-    store = InMemoryStore()
-    vector_index = InMemoryVectorIndex(dimension=embedding_dim)
-    bm25_index = TantivyBM25Index(path=output_dir / f"{doc_id}__bm25")
+    text = input_path.read_text(encoding="utf-8")
+    doc_hash = _doc_hash_for(text)
+    effective_doc_id = doc_id or input_path.stem
 
+    bundle = build_bundle(config=config, profile=state.profile)
+    store, vector_index, bm25_index = _build_per_doc_backends(
+        config=config,
+        profile=state.profile,
+        doc_hash=doc_hash,
+    )
+
+    parser = MarkdownParser()  # PDF / code routing will plug in later.
     stats = ingest_document(
         source=input_path,
-        parser=MarkdownParser(),
-        coref=IdentityCorefResolver(),
-        ner=StubNERTagger({}),
-        ner_labels=["person", "system"],
-        embedder=HashEmbedder(dimension=embedding_dim),
-        summarizer=HeuristicSummarizer(),
+        parser=parser,
+        coref=bundle.coref,
+        ner=bundle.ner,
+        ner_labels=_DEFAULT_NER_LABELS,
+        embedder=bundle.embedder,
+        summarizer=bundle.summarizer,
         store=store,
         vector_index=vector_index,
         bm25_index=bm25_index,
     )
 
-    stats_path = output_dir / f"{doc_id}__ingest_stats.json"
-    # Section count derives from the store (IngestStats only tracks
-    # the indexed primitives; the assembled section tree lives on
-    # the store itself).
-    sections_indexed = sum(1 for _ in store.iter_sections())
-    stats_path.write_text(
+    run_id = new_run_id()
+    runs_path = Path(config.paths.runs_path)
+    run_dir = runs_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    index_dir = _per_doc_index_dir(config, doc_hash)
+
+    persisted: dict[str, str] = {
+        "report": str(run_dir / "report.md"),
+        "result": str(run_dir / "result.json"),
+        "bm25": str(index_dir / f"{doc_hash}.bm25"),
+    }
+    if state.profile != "heuristic":
+        persisted["store"] = str(index_dir / f"{doc_hash}.db")
+        persisted["vector_index"] = str(index_dir / f"{doc_hash}.vec.db")
+
+    signature = {
+        "chunk_ids": sorted(c.id for c in store.iter_chunks()),
+        "section_ids": sorted(s.id for s in store.iter_sections()),
+        "entity_ids": sorted(e.id for e in store.iter_entities()),
+    }
+    baseline = CanaryBaseline.from_signature(
+        doc_id=effective_doc_id,
+        playbook="ingest",
+        signature=signature,
+    )
+
+    payload: dict[str, object] = {
+        "command": "ingest",
+        "status": "ok",
+        "run_id": run_id,
+        "doc_id": effective_doc_id,
+        "doc_hash": doc_hash,
+        "profile": state.profile,
+        "input_path": str(input_path),
+        "sections_parsed": stats.sections_parsed,
+        "chunks_indexed": stats.chunks_indexed,
+        "entities_indexed": stats.entities_indexed,
+        "embedded_tokens": stats.embedded_tokens,
+        "persisted": persisted,
+        "signature": signature,
+        "signature_hash": baseline.signature_hash,
+    }
+
+    markdown = _render_ingest_markdown(
+        input_path=input_path,
+        profile=state.profile,
+        run_id=run_id,
+        doc_id=effective_doc_id,
+        doc_hash=doc_hash,
+        stats=stats,
+        persisted_paths=persisted,
+    )
+
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    # Keep the legacy canary signature file the way S-100 placed it
+    # so the committed S-090 baseline check still has something to
+    # compare against without going through the new result.json shape.
+    legacy_sig_path = runs_path / f"{effective_doc_id}__ingest_signature.json"
+    save_baseline(legacy_sig_path, baseline)
+    legacy_stats_path = runs_path / f"{effective_doc_id}__ingest_stats.json"
+    legacy_stats_path.write_text(
         json.dumps(
             {
                 "run_id": run_id,
-                "doc_id": doc_id,
+                "doc_id": effective_doc_id,
                 "input_path": str(input_path),
                 "chunks_indexed": stats.chunks_indexed,
-                "sections_indexed": sections_indexed,
+                "sections_indexed": stats.sections_parsed,
                 "entities_indexed": stats.entities_indexed,
             },
             indent=2,
@@ -170,39 +485,15 @@ def ingest(
         encoding="utf-8",
     )
 
-    signature = {
-        "chunk_ids": sorted(c.id for c in store.iter_chunks()),
-        "section_ids": sorted(s.id for s in store.iter_sections()),
-        "entity_ids": sorted(e.id for e in store.iter_entities()),
-    }
-    baseline = CanaryBaseline.from_signature(
-        doc_id=doc_id,
-        playbook="ingest",
-        signature=signature,
-    )
-    sig_path = output_dir / f"{doc_id}__ingest_signature.json"
-    save_baseline(sig_path, baseline)
-
-    typer.echo(
-        json.dumps(
-            {
-                "command": "ingest",
-                "status": "ok",
-                "run_id": run_id,
-                "stats_path": str(stats_path),
-                "signature_path": str(sig_path),
-                "chunks_indexed": stats.chunks_indexed,
-            },
-            indent=2,
-        )
-    )
+    _emit_output(state, markdown=markdown, payload=payload)
 
 
-# --- LLM-backed stubs ---
+# --- LLM-backed stubs (wired in S-113 .. S-117) ---
 
 
 @app.command()
 def qa(
+    ctx: typer.Context,
     query: str = typer.Argument(..., help="The question to ask the indexed corpus."),
     index_path: Path = typer.Option(
         Path("./runs"),
@@ -211,27 +502,21 @@ def qa(
         help="Directory holding the ingested index (output of `ctrldoc ingest`).",
     ),
 ) -> None:
-    """UC1 trustworthy QA over an indexed document (skeleton).
-
-    The production wiring for a generator + verifier pair is not yet
-    bound to the CLI; this subcommand validates its arguments and
-    emits a structured "next-step" message.
-    """
+    """UC1 trustworthy QA over an indexed document (skeleton)."""
+    _ = ctx.obj  # quiet "unused" — wiring lands in S-114
     if not query.strip():
         typer.echo("error: query must not be blank", err=True)
         raise typer.Exit(code=2)
     _emit_stub(
         command="qa",
         inputs={"query": query, "index_path": str(index_path)},
-        next_step=(
-            "Wire QAPlaybook(prefix, retriever, task_runner, decomposer, verifier) "
-            "with production deps and call playbook.run(query)."
-        ),
+        next_step=("Wire QAPlaybook with the BackendBundle deps and call playbook.run(query)."),
     )
 
 
 @app.command()
 def audit(
+    ctx: typer.Context,
     checklist_path: Path = typer.Argument(..., help="Checklist file (JSONL of items)."),
     index_path: Path = typer.Option(
         Path("./runs"),
@@ -247,6 +532,7 @@ def audit(
     ),
 ) -> None:
     """UC2 coverage audit / UC3 quality audit (skeleton)."""
+    _ = ctx.obj
     if kind not in {"coverage", "quality"}:
         typer.echo(f"error: --kind must be 'coverage' or 'quality', got {kind!r}", err=True)
         raise typer.Exit(code=2)
@@ -259,14 +545,15 @@ def audit(
             "kind": kind,
         },
         next_step=(
-            "Wire CoverageAuditPlaybook / QualityAuditPlaybook with a production "
-            "BatchedTaskRunner + retriever and call playbook.run(items)."
+            "Wire CoverageAuditPlaybook / QualityAuditPlaybook with the BackendBundle "
+            "deps and call playbook.run(items)."
         ),
     )
 
 
 @app.command()
 def review(
+    ctx: typer.Context,
     doc_type: str = typer.Argument(..., help="Document type, e.g. `Aurora L0 kernel spec`."),
     index_path: Path = typer.Option(
         Path("./runs"),
@@ -276,6 +563,7 @@ def review(
     ),
 ) -> None:
     """UC4 analytical review (skeleton)."""
+    _ = ctx.obj
     if not doc_type.strip():
         typer.echo("error: doc_type must not be blank", err=True)
         raise typer.Exit(code=2)
@@ -283,14 +571,15 @@ def review(
         command="review",
         inputs={"doc_type": doc_type, "index_path": str(index_path)},
         next_step=(
-            "Wire AnalyticalReviewPlaybook with a production lens_generator + "
-            "sweeper + synthesis_runner and call playbook.run(doc_type)."
+            "Wire AnalyticalReviewPlaybook with the BackendBundle deps and call "
+            "playbook.run(doc_type)."
         ),
     )
 
 
 @app.command()
 def scan(
+    ctx: typer.Context,
     index_path: Path = typer.Option(
         Path("./runs"),
         "--index",
@@ -298,16 +587,8 @@ def scan(
         help="Directory holding the ingested target-doc index.",
     ),
 ) -> None:
-    """UC5 anomaly scan — deterministic detectors over the indexed store.
-
-    Today's CLI wires the two deterministic reference detectors
-    (`hedge_word`, `empty_summary`); the four LLM-backed detectors
-    from §5.5 (asymmetry, justification gap, undefined terms,
-    boundary silence) plug in once their backends land.
-    """
-    # The skeleton scans an empty in-memory store so the CLI path
-    # exercises the AnomalyScanPlaybook composition end-to-end. A
-    # follow-up slice will load the persisted store from `index_path`.
+    """UC5 anomaly scan — deterministic detectors over the indexed store."""
+    _ = ctx.obj
     store = InMemoryStore()
     playbook = AnomalyScanPlaybook(
         detectors=[HedgeWordDetector(), EmptySummaryDetector()],
@@ -336,6 +617,7 @@ def scan(
 
 @app.command(name="map")
 def map_(
+    ctx: typer.Context,
     concepts: list[str] = typer.Argument(
         None,
         help="Optional explicit concept ids to map; auto-extracted when omitted.",
@@ -348,13 +630,11 @@ def map_(
     ),
 ) -> None:
     """UC6 concept relation map (skeleton)."""
+    _ = ctx.obj
     _emit_stub(
         command="map",
         inputs={"concepts": list(concepts or []), "index_path": str(index_path)},
-        next_step=(
-            "Wire RelationMapPlaybook with a production extractor + retriever + "
-            "classifier and call playbook.run()."
-        ),
+        next_step=("Wire RelationMapPlaybook with the BackendBundle deps and call playbook.run()."),
     )
 
 
@@ -367,4 +647,9 @@ if __name__ == "__main__":
     main()
 
 
-__all__ = ["app", "main"]
+__all__ = [
+    "CliState",
+    "OutputFormat",
+    "app",
+    "main",
+]

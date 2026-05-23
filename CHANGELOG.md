@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-05-23
+
+### Added
+
+- `ctrldoc ingest <path>` is wired end-to-end through the
+  `BackendBundle`: heuristic profile keeps the deterministic
+  in-memory L0 substrate (matches the S-090 canary baseline);
+  thrifty / production profiles drive the L0 pipeline through
+  `OllamaEmbedder` + `SQLiteStore` + `sqlite-vec` + Tantivy BM25
+  and persist a per-doc index at
+  `<runs_path>/indexes/<doc_hash>.{db,vec.db,bm25/}`.
+- Global CLI options on a `@app.callback`: `--config <path>`
+  (falls back to a built-in default when the file is absent),
+  `--profile heuristic|thrifty|production` (default `thrifty`),
+  `--format markdown|json|both` (default `markdown`), and
+  `--max-cost-usd FLOAT` (default 5.00).
+- `.env` is parsed on every CLI invocation and entries are
+  promoted to `os.environ` (existing values are not overwritten;
+  the value is never echoed back).
+- Per-run artefacts now land at `<runs_path>/<run_id>/report.md`
+  (Markdown) and `<runs_path>/<run_id>/result.json` (structured
+  payload incl. signature + signature_hash). Legacy
+  `<doc_id>__ingest_signature.json` + `__ingest_stats.json` files
+  remain next to the run dir so the S-090 canary path stays
+  whole.
+
+### Notes
+
+- The Quickstart in README.md now uses `ctrldoc --profile
+  heuristic ingest …` so the no-credentials install path still
+  works under the new default thrifty profile.
+
 ## [0.2.2] — 2026-05-23
 
 ### Added
