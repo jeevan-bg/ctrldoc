@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-23
+
+### Added
+
+- `OllamaTaskClient` in `src/ctrldoc/orch/task_ollama.py` — implements
+  the `TaskClient` protocol against `qwen2.5:7b-instruct-q4_K_M` via
+  a local Ollama service, mirroring `AnthropicTaskClient`. Enables
+  the tier-1 (`local`) route through `TaskClientRouter` so the
+  `BatchedTaskRunner` can fan per-item judging out to the local 7B
+  while reserving Opus for synthesis (SPEC-REF §4.5).
+
 ## [0.2.0] — 2026-05-23
 
 Minor version bump rolling up the six post-v0.1.0 production
