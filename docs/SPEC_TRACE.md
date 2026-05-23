@@ -93,7 +93,7 @@ Row format:
 | §8.1/§8.2 (quality_eval runner) | S-083 | src/ctrldoc/eval/quality.py | tests/test_quality_eval.py, tests/eval/quality_eval.jsonl | covered |
 | §8.1/§8.2 (analytical_eval runner) | S-084 | src/ctrldoc/eval/analytical.py | tests/test_analytical_eval.py, tests/eval/analytical_eval.jsonl | partial (runner + 3-case starter) |
 | §8.1/§8.2 (anomaly_eval runner) | S-084 | src/ctrldoc/eval/anomaly.py | tests/test_anomaly_eval.py, tests/eval/anomaly_eval.jsonl | partial (runner + 3-case starter) |
-| §8.1 (relation_eval) | S-085 | tests/eval/ | tests/eval/ | pending |
+| §8.1/§8.2 (relation_eval runner) | S-085 | src/ctrldoc/eval/relation.py | tests/test_relation_eval.py, tests/eval/relation_eval.jsonl | partial (runner + 3-case starter) |
 | §8.5 (adversarial) | S-086 | tests/adversarial/ | tests/adversarial/ | pending |
 | §8.6 family 1 | S-038 | src/ctrldoc/ingest/ | tests/families/test_ingest_completeness.py | pending |
 | §8.6 family 2 | S-046 | src/ctrldoc/retrieval/ | tests/families/test_niah.py | pending |
