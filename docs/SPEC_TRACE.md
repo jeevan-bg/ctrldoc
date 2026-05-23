@@ -28,7 +28,7 @@ Row format:
 | §4.1 (code parser, Python) | S-032 | src/ctrldoc/ingest/code.py | tests/test_parser_code.py | covered |
 | §4.1 (semantic chunker) | S-033 | src/ctrldoc/ingest/chunker.py | tests/test_chunker.py | covered |
 | §4.1 (coref — interface) | S-034 | src/ctrldoc/ingest/coref.py | tests/test_coref.py | covered |
-| §4.1 (coref — fastcoref backend) | S-034b | src/ctrldoc/ingest/coref.py | tests/test_coref.py | blocked |
+| §4.1 (coref — fastcoref backend) | S-034b | src/ctrldoc/ingest/coref_fastcoref.py | tests/test_ingest_coref_fastcoref.py | covered |
 | §4.1 (NER + canonicalisation) | S-035 | src/ctrldoc/ingest/ner.py, src/ctrldoc/ingest/ner_gliner.py | tests/test_ner.py, tests/test_ner_gliner.py | covered |
 | §4.1/§4.2 (embedder — interface) | S-036 | src/ctrldoc/ingest/embedder.py | tests/test_embedder.py | covered |
 | §4.1 (embedder — BGE-M3 via Ollama) | S-036b | src/ctrldoc/ingest/embedder_ollama.py | tests/test_ingest_embedder_ollama.py | covered |
