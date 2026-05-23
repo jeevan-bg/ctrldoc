@@ -31,7 +31,7 @@ Row format:
 | §4.1 (coref — fastcoref backend) | S-034b | src/ctrldoc/ingest/coref.py | tests/test_coref.py | blocked |
 | §4.1 (NER + canonicalisation) | S-035 | src/ctrldoc/ingest/ner.py, src/ctrldoc/ingest/ner_gliner.py | tests/test_ner.py, tests/test_ner_gliner.py | covered |
 | §4.1/§4.2 (embedder — interface) | S-036 | src/ctrldoc/ingest/embedder.py | tests/test_embedder.py | covered |
-| §4.1 (embedder — BGE-M3 via Ollama) | S-036b | src/ctrldoc/ingest/embedder.py | tests/test_embedder.py | blocked |
+| §4.1 (embedder — BGE-M3 via Ollama) | S-036b | src/ctrldoc/ingest/embedder_ollama.py | tests/test_ingest_embedder_ollama.py | covered |
 | §4.1/§3.1 (section summariser) | S-037 | src/ctrldoc/ingest/summarizer.py, src/ctrldoc/ingest/summarizer_anthropic.py | tests/test_summarizer.py, tests/test_summarizer_anthropic.py | covered |
 | §4.1 (ingest end-to-end pipeline) | S-038 | src/ctrldoc/ingest/pipeline.py | tests/families/test_ingest_completeness.py | covered |
 | §8.6 family 1 (ingest completeness) | S-038 | src/ctrldoc/ingest/ | tests/families/test_ingest_completeness.py | covered |
