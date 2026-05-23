@@ -15,6 +15,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   hand-curated sentence→tuple pairs across six doc types (spec,
   runbook, RFC, legal, academic, narrative); the runner gates each
   case on the F1 ≥ 0.85 floor.
+- `ctrldoc.eval.calibration` — NLI calibration eval substrate per
+  SPEC §6.5. Exports `NLIScore` (3-way softmax with sum-to-1
+  validation), `CalibrationScorer` Protocol, `CalibrationEvalRunner`,
+  and the metric primitives `label_accuracy`,
+  `expected_calibration_error` (Guo et al. 2017, equal-width binning
+  on top-label confidence), and `per_label_recall`. The
+  `tests/eval/calibration_eval.jsonl` starter set ships 200
+  hand-authored premise/hypothesis cases balanced across
+  {entailment, contradiction, neutral} and spanning six doc types;
+  the runner gates each case on `label_accuracy ≥ 0.85` AND the v1
+  release-gate threshold `ECE ≤ 0.05`.
 
 ## [0.3.0] — 2026-05-23
 
