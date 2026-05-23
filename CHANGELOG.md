@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-05-23
+
+Production dense-embedder landing behind the v0.1.0 protocol seam.
+
+### Added
+
+- **`OllamaEmbedder` (S-036b)** — `bge-m3` via a local Ollama HTTP
+  service behind the existing `Embedder` protocol seam. Lazy SDK
+  client, native 1024-d output L2-normalised so downstream cosine
+  matches the heuristic `HashEmbedder`. Empty input maps to the
+  zero vector. Seven integration tests skip cleanly when the
+  `ollama` SDK is absent or no service is reachable on
+  `127.0.0.1:11434`. Lives in `ctrldoc.ingest.embedder_ollama` so
+  the dependency-free heuristic ref stays Ollama-free.
+
 ## [0.1.2] — 2026-05-23
 
 Production NLI backend landing behind the v0.1.0 protocol seam.
