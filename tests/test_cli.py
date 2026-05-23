@@ -405,32 +405,7 @@ def test_load_dotenv_missing_file_is_no_op(tmp_path: Path) -> None:
     _load_dotenv(tmp_path / "no-such-file.env")
 
 
-# --- qa stub ---
-
-
-def test_qa_help_describes_purpose() -> None:
-    result = runner.invoke(app, ["qa", "--help"])
-    assert result.exit_code == 0
-    assert "QA" in result.stdout
-
-
-def test_qa_blank_query_exits_with_code_two() -> None:
-    result = runner.invoke(app, ["qa", "   "])
-    assert result.exit_code == 2
-    assert "blank" in result.stderr
-
-
-def test_qa_emits_structured_stub_envelope() -> None:
-    result = runner.invoke(app, ["qa", "What is Aurora?"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["command"] == "qa"
-    assert payload["status"] == "stub"
-    assert payload["inputs"]["query"] == "What is Aurora?"
-    assert "next_step" in payload
-    assert isinstance(payload["anthropic_key_present"], bool)
-
-
+# --- qa moved to tests/test_cli_qa.py (S-114) ---
 # --- audit moved to tests/test_cli_audit.py (S-113) ---
 
 

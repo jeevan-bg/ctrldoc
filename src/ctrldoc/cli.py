@@ -495,23 +495,161 @@ def ingest(
 def qa(
     ctx: typer.Context,
     query: str = typer.Argument(..., help="The question to ask the indexed corpus."),
-    index_path: Path = typer.Option(
-        Path("./runs"),
-        "--index",
-        "-i",
-        help="Directory holding the ingested index (output of `ctrldoc ingest`).",
+    target_path: Path = typer.Option(
+        ...,
+        "--target",
+        "-t",
+        help="Markdown target document to answer against.",
+    ),
+    doc_id: str = typer.Option(
+        "",
+        "--doc-id",
+        "-d",
+        help="Logical id for the target doc; defaults to its file stem.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Override `paths.runs_path` from the config for this run.",
     ),
 ) -> None:
-    """UC1 trustworthy QA over an indexed document (skeleton)."""
-    _ = ctx.obj  # quiet "unused" — wiring lands in S-114
+    """UC1 trustworthy QA — citation-grounded, verifier-bounded.
+
+    Ingests the target doc inline, builds the bundle's retriever +
+    cacheable prefix, runs `QAPlaybook` (retrieve → generate →
+    decompose → verify each claim), then renders a Markdown answer
+    plus a per-claim verification table. Heuristic profile rejected
+    here: the playbook needs an LLM seam.
+    """
+    from ctrldoc.assembler import (
+        CacheablePrefix,
+        assemble_glossary,
+        assemble_skeleton,
+    )
+    from ctrldoc.cli_audit import BundleRetriever
+    from ctrldoc.cli_qa import VerifierRetriever, render_qa_markdown
+    from ctrldoc.orch.task import StatelessTaskRunner
+    from ctrldoc.playbooks.qa import QAPlaybook
+    from ctrldoc.verify.claim_verifier import ClaimVerifier
+
+    state: CliState = ctx.obj
     if not query.strip():
         typer.echo("error: query must not be blank", err=True)
         raise typer.Exit(code=2)
-    _emit_stub(
-        command="qa",
-        inputs={"query": query, "index_path": str(index_path)},
-        next_step=("Wire QAPlaybook with the BackendBundle deps and call playbook.run(query)."),
+    _require_input_path(target_path)
+    if state.profile == "heuristic":
+        typer.echo(
+            "error: qa requires --profile thrifty|production (heuristic has no LLM seam)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    config = _load_config(state.config_path)
+    if output_dir is not None:
+        config = config.model_copy(
+            update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    doc_hash = _doc_hash_for(text)
+    effective_doc_id = doc_id or target_path.stem
+
+    bundle = build_bundle(config=config, profile=state.profile)
+    store, vector_index, bm25_index = _build_per_doc_backends(
+        config=config,
+        profile=state.profile,
+        doc_hash=doc_hash,
     )
+    ingest_document(
+        source=target_path,
+        parser=MarkdownParser(),
+        coref=bundle.coref,
+        ner=bundle.ner,
+        ner_labels=_DEFAULT_NER_LABELS,
+        embedder=bundle.embedder,
+        summarizer=bundle.summarizer,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+    )
+
+    skeleton = assemble_skeleton(store)
+    glossary = assemble_glossary(store)
+    bundle_retriever = BundleRetriever(
+        bundle=bundle,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+        prefix_skeleton=skeleton,
+        prefix_glossary=glossary,
+    )
+
+    prefix = CacheablePrefix(
+        system_prompt=_QA_SYSTEM_PROMPT,
+        doc_skeleton=skeleton,
+        entity_glossary=glossary,
+    )
+
+    assert bundle.task_client_router is not None  # guarded by profile check above
+    task_client = bundle.task_client_router.for_tier("local")
+    task_runner = StatelessTaskRunner(client=task_client)
+
+    verifier = ClaimVerifier(
+        nli=bundle.nli_checker,
+        judge=bundle.llm_judge,
+        retriever=VerifierRetriever(bundle_retriever=bundle_retriever),
+    )
+    playbook = QAPlaybook(
+        prefix=prefix,
+        retriever=bundle_retriever,
+        task_runner=task_runner,
+        decomposer=bundle.claim_decomposer,
+        verifier=verifier,
+    )
+
+    report = playbook.run(query)
+
+    run_id = new_run_id()
+    runs_path = Path(config.paths.runs_path)
+    run_dir = runs_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    markdown = render_qa_markdown(
+        report=report,
+        target_path=target_path,
+        profile=state.profile,
+        run_id=run_id,
+    )
+    payload: dict[str, object] = {
+        "command": "qa",
+        "status": "ok",
+        "run_id": run_id,
+        "query": query,
+        "target_path": str(target_path),
+        "target_doc_id": effective_doc_id,
+        "target_doc_hash": doc_hash,
+        "profile": state.profile,
+        "max_cost_usd": state.max_cost_usd,
+        "answer": report.answer,
+        "claims": [c.model_dump(mode="json") for c in report.claims],
+    }
+
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+_QA_SYSTEM_PROMPT = (
+    "You are a citation-grounded QA system. Answer the user's QUERY "
+    "using only the EVIDENCE spans (each is labelled `[chunk_id] text`). "
+    "If the evidence does not contain the answer, say so plainly — do "
+    "not speculate.\n\n"
+    "Return one JSON object of shape:\n"
+    '  {"answer": <plain-text answer, may quote spans by [chunk_id]>}\n'
+    "No prose outside the JSON."
+)
 
 
 @app.command()
