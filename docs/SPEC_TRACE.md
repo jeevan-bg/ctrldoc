@@ -48,6 +48,7 @@ Row format:
 | §4.3 (retrieval) | S-040..S-046 | src/ctrldoc/retrieval/ | tests/test_retrieval_*.py | partial |
 | §4.3 (retrieval DSL) | S-040 | src/ctrldoc/retrieval/dsl.py | tests/test_retrieval_dsl.py | covered |
 | §4.3 (retrieval executor) | S-041 | src/ctrldoc/retrieval/executor.py | tests/test_retrieval_executor.py | covered |
+| §4.3 (Reciprocal Rank Fusion) | S-042 | src/ctrldoc/retrieval/fusion.py | tests/test_retrieval_fusion.py | covered |
 | §4.4 (verifier) | S-050..S-055 | src/ctrldoc/verify/ | tests/test_verify_*.py | pending |
 | §4.5 (orchestrator) | S-060..S-067 | src/ctrldoc/orch/ | tests/test_orch_*.py | pending |
 | §4.7 (cross-cutting) | S-002..S-007, S-014 | src/ctrldoc/{config,trace,budget,provenance,tokenizer}.py | tests/test_*.py | partial |
