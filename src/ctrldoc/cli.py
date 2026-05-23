@@ -1111,24 +1111,167 @@ def scan(
 @app.command(name="map")
 def map_(
     ctx: typer.Context,
-    concepts: list[str] = typer.Argument(
-        None,
-        help="Optional explicit concept ids to map; auto-extracted when omitted.",
+    target_path: Path = typer.Option(
+        ...,
+        "--target",
+        "-t",
+        help="Markdown target document to map.",
     ),
-    index_path: Path = typer.Option(
-        Path("./runs"),
-        "--index",
-        "-i",
-        help="Directory holding the ingested target-doc index.",
+    doc_id: str = typer.Option(
+        "",
+        "--doc-id",
+        "-d",
+        help="Logical id for the target doc; defaults to its file stem.",
+    ),
+    max_concepts: int = typer.Option(
+        10,
+        "--max-concepts",
+        help="Cap on the number of concepts to map; bounds the O(M²) pair fan-out.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Override `paths.runs_path` from the config for this run.",
     ),
 ) -> None:
-    """UC6 concept relation map (skeleton)."""
-    _ = ctx.obj
-    _emit_stub(
-        command="map",
-        inputs={"concepts": list(concepts or []), "index_path": str(index_path)},
-        next_step=("Wire RelationMapPlaybook with the BackendBundle deps and call playbook.run()."),
+    """UC6 concept relation map — typed edges between document concepts.
+
+    Pulls top-`--max-concepts` entities from the ingested target as
+    nodes; iterates pair (c_i, c_j) over the upper triangle, fetches
+    co-occurrence evidence via the bundle retriever, and asks the
+    bundle's `local` tier (Ollama Qwen in thrifty) to classify the
+    relation. Pairs with no co-occurrence evidence are dropped
+    before the classifier call; pairs the model marks `unrelated`
+    are dropped from the final graph. Emits a Markdown adjacency
+    table + Mermaid graph.
+    """
+    from ctrldoc.assembler import (
+        CacheablePrefix,
+        assemble_glossary,
+        assemble_skeleton,
     )
+    from ctrldoc.cli_audit import BundleRetriever
+    from ctrldoc.cli_map import (
+        BundleCoOccurrenceRetriever,
+        LLMRelationClassifier,
+        StoreEntityConceptExtractor,
+        render_map_markdown,
+    )
+    from ctrldoc.orch.task import StatelessTaskRunner
+    from ctrldoc.playbooks.relations import RelationMapPlaybook
+
+    state: CliState = ctx.obj
+    _require_input_path(target_path)
+    if state.profile == "heuristic":
+        typer.echo(
+            "error: map requires --profile thrifty|production (heuristic has no LLM seam)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if max_concepts <= 0:
+        typer.echo("error: --max-concepts must be positive", err=True)
+        raise typer.Exit(code=2)
+
+    config = _load_config(state.config_path)
+    if output_dir is not None:
+        config = config.model_copy(
+            update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    doc_hash = _doc_hash_for(text)
+    effective_doc_id = doc_id or target_path.stem
+
+    bundle = build_bundle(config=config, profile=state.profile)
+    store, vector_index, bm25_index = _build_per_doc_backends(
+        config=config,
+        profile=state.profile,
+        doc_hash=doc_hash,
+    )
+    ingest_document(
+        source=target_path,
+        parser=MarkdownParser(),
+        coref=bundle.coref,
+        ner=bundle.ner,
+        ner_labels=_DEFAULT_NER_LABELS,
+        embedder=bundle.embedder,
+        summarizer=bundle.summarizer,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+    )
+
+    skeleton = assemble_skeleton(store)
+    glossary = assemble_glossary(store)
+    bundle_retriever = BundleRetriever(
+        bundle=bundle,
+        store=store,
+        vector_index=vector_index,
+        bm25_index=bm25_index,
+        prefix_skeleton=skeleton,
+        prefix_glossary=glossary,
+    )
+
+    prefix = CacheablePrefix(
+        system_prompt=_RELATION_CLASSIFIER_SYSTEM_PROMPT,
+        doc_skeleton=skeleton,
+        entity_glossary=glossary,
+    )
+
+    assert bundle.task_client_router is not None  # guarded by profile check above
+    task_client = bundle.task_client_router.for_tier("local")
+    task_runner = StatelessTaskRunner(client=task_client)
+
+    playbook = RelationMapPlaybook(
+        extractor=StoreEntityConceptExtractor(store=store, max_concepts=max_concepts),
+        retriever=BundleCoOccurrenceRetriever(bundle_retriever=bundle_retriever),
+        classifier=LLMRelationClassifier(prefix=prefix, task_runner=task_runner),
+    )
+
+    graph = playbook.run()
+
+    run_id = new_run_id()
+    runs_path = Path(config.paths.runs_path)
+    run_dir = runs_path / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    markdown = render_map_markdown(
+        graph=graph,
+        target_path=target_path,
+        profile=state.profile,
+        run_id=run_id,
+    )
+    payload: dict[str, object] = {
+        "command": "map",
+        "status": "ok",
+        "run_id": run_id,
+        "target_path": str(target_path),
+        "target_doc_id": effective_doc_id,
+        "target_doc_hash": doc_hash,
+        "profile": state.profile,
+        "max_concepts": max_concepts,
+        "nodes": [c.model_dump(mode="json") for c in graph.nodes],
+        "edges": [e.model_dump(mode="json") for e in graph.edges],
+    }
+
+    (run_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+_RELATION_CLASSIFIER_SYSTEM_PROMPT = (
+    "You classify the relation between two concepts using only the "
+    "EVIDENCE spans. Return one JSON object of shape:\n"
+    '  {"type": <one of: depends_on, contradicts, refines, instantiates, '
+    "conflicts_with, prerequisite_of, alternative_to, unrelated>,\n"
+    '   "confidence": <0.0-1.0>,\n'
+    '   "citation_chunk_ids": [<chunk_id copied from EVIDENCE>]}\n\n'
+    "Pick `unrelated` if the evidence does not establish a relation "
+    "between the two concepts. Cite only chunk_ids that appear in "
+    "EVIDENCE. No prose outside the JSON."
+)
 
 
 def main() -> None:

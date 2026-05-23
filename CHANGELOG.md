@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-05-23
+
+### Added
+
+- `ctrldoc map --target <md>` is wired end-to-end through
+  `RelationMapPlaybook` (UC6). New helpers in
+  `src/ctrldoc/cli_map.py`:
+  - `StoreEntityConceptExtractor` — pulls top-N entities by
+    mention count, bounded by `--max-concepts` (default 10) so
+    the O(M²) pair fan-out stays sane.
+  - `BundleCoOccurrenceRetriever` — wraps the shared
+    `BundleRetriever` (S-113) and sanitises BM25-hostile
+    punctuation in concept names before retrieval.
+  - `LLMRelationClassifier` — routes through the bundle's
+    `local` tier (Ollama Qwen in thrifty), returns `None` for
+    `unrelated` so the playbook drops the pair, resolves
+    citation chunk_ids against the evidence pack, clamps
+    confidence to `[0, 1]`.
+  - `render_map_markdown` emits a Markdown adjacency table +
+    Mermaid `graph LR` block with typed edges and standalone
+    nodes.
+
+### Notes
+
+- Heuristic profile rejected for `map` (no LLM seam).
+- Two obsolete map stub tests removed from `tests/test_cli.py`.
+
 ## [0.2.7] — 2026-05-23
 
 ### Added
