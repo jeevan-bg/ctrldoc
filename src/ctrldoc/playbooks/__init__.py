@@ -19,8 +19,18 @@ from ctrldoc.playbooks.quality import (
     QualityAuditPlaybook,
     QualityReport,
 )
+from ctrldoc.playbooks.review import (
+    AnalyticalReviewPlaybook,
+    HeuristicLensGenerator,
+    Lens,
+    LensGenerator,
+    LensSweeper,
+    ReviewNarrative,
+    ReviewReport,
+)
 
 __all__ = [
+    "AnalyticalReviewPlaybook",
     "AnswerReport",
     "ChecklistItem",
     "CoverageAuditPlaybook",
@@ -28,8 +38,14 @@ __all__ = [
     "CoverageRetriever",
     "CriteriaGenerator",
     "HeuristicCriteriaGenerator",
+    "HeuristicLensGenerator",
+    "Lens",
+    "LensGenerator",
+    "LensSweeper",
     "QAPlaybook",
     "QARetriever",
     "QualityAuditPlaybook",
     "QualityReport",
+    "ReviewNarrative",
+    "ReviewReport",
 ]
