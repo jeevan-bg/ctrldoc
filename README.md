@@ -17,7 +17,7 @@ Large documents break LLMs in predictable ways:
 
 ## Status
 
-Pre-MVP. Active development. See [docs/SPEC.md](docs/SPEC.md) for the full specification and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview.
+Pre-1.0. The substrate is in place — six playbooks, eval harness, family invariants (ingest, retrieval, verifier, adversarial, determinism, performance, canary), CLI skeleton, runnable examples. The LLM-backed backends ship behind protocol seams: production wirings for Anthropic / Ollama plug in without changing playbook code. See [docs/SPEC.md](docs/SPEC.md) for the full specification.
 
 ## Install
 
@@ -25,28 +25,48 @@ Pre-MVP. Active development. See [docs/SPEC.md](docs/SPEC.md) for the full speci
 git clone https://github.com/<your-username>/ctrldoc.git
 cd ctrldoc
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,index]"
 ```
 
-Requirements: Python 3.11+, macOS or Linux. For local models: [Ollama](https://ollama.com) and `ollama pull bge-m3 qwen2.5:7b-instruct-q4_K_M`.
+Requirements: Python 3.11+, macOS or Linux. For local LLM backends (optional): [Ollama](https://ollama.com) with `ollama pull bge-m3 qwen2.5:7b-instruct-q4_K_M`. For Anthropic-backed playbooks: set `ANTHROPIC_API_KEY` (or place it in a `.env` file at the repo root — never commit it).
 
-## Quick start
+## Quickstart
+
+The repo ships a synthetic gold document at `tests/fixtures/synthetic/gold_doc.md` so you can verify the install without any LLM credentials.
 
 ```bash
-# Index a document
-ctrldoc ingest path/to/doc.pdf --out ./index.db
+# 1. Ingest the synthetic doc — runs the deterministic L0 pipeline
+#    end-to-end and writes index artefacts under ./runs/aurora__*.
+ctrldoc ingest tests/fixtures/synthetic/gold_doc.md \
+    --output-dir ./runs --doc-id aurora
 
-# Ask a question (UC1)
-ctrldoc qa ./index.db "What does §4.2 imply about fault tolerance?"
+# 2. Run the deterministic anomaly-scan detectors (hedge words +
+#    empty section summaries). No LLM required.
+ctrldoc scan
 
-# Audit coverage (UC2)
-ctrldoc audit ./index.db --checklist threats.md
-
-# Analytical review (UC4)
-ctrldoc review ./index.db --lenses auto
+# 3. See the full CLI surface.
+ctrldoc --help
 ```
 
-See [examples/](examples/) for full walkthroughs.
+Every subcommand emits a JSON envelope on stdout, parseable with `jq`. The QA / audit / review / map subcommands validate their arguments and report `anthropic_key_present` so you know whether you're ready to wire a production backend.
+
+For end-to-end Python walkthroughs of every UC playbook (deterministic stubs, no API key needed), see [`examples/`](examples/):
+
+```bash
+python examples/01_qa.py
+python examples/05_anomaly_scan.py
+```
+
+## Use cases (one playbook each)
+
+| # | Playbook | Question it answers |
+|---|---|---|
+| UC1 | `qa` | "What does the doc say about X — with citations?" |
+| UC2 | `coverage_audit` | "Does the doc address every item in this checklist?" |
+| UC3 | `quality_audit` | "Is this a well-formed L0 spec / RFC / runbook?" |
+| UC4 | `analytical_review` | "What are the weaknesses and gaps in this doc?" |
+| UC5 | `anomaly_scan` | "Surface suspicious patterns for triage." |
+| UC6 | `relation_map` | "How do these concepts relate across the doc?" |
 
 ## Architecture (one line per layer)
 
@@ -71,8 +91,10 @@ Full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 - [docs/SPEC.md](docs/SPEC.md) — the full MVP specification.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system overview.
+- [docs/SPEC_TRACE.md](docs/SPEC_TRACE.md) — spec-to-code traceability matrix.
 - [docs/DECISIONS.md](docs/DECISIONS.md) — architectural decision records.
 - [docs/TESTING.md](docs/TESTING.md) — test strategy and the 14 test families.
+- [examples/](examples/) — runnable per-playbook walkthroughs.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute.
 - [CHANGELOG.md](CHANGELOG.md) — release history.
 
