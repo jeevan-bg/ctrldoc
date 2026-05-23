@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-05-23
+
+### Added
+
+- `ctrldoc audit --checklist <md> --target <md>` is wired end-to-end
+  through `CoverageAuditPlaybook` (UC2). Checklist items are
+  extracted via a deterministic Markdown-section parser
+  (`parse_checklist_markdown`): each `## H2` / `### H3` heading +
+  first paragraph becomes one item, with `topic_key` inheriting
+  from the nearest parent section.
+- `BundleRetriever` (`src/ctrldoc/cli_audit.py`) adapts a
+  `BackendBundle` to the `QARetriever` / `CoverageRetriever`
+  protocols: bundle planner → executor → RRF fusion → bundle
+  reranker → `build_evidence_pack`. Reused by qa / review /
+  map in later slices.
+- `render_coverage_markdown` groups verdicts (`Covered`,
+  `Partial`, `NotCovered`, `Ambiguous`) with a summary table and
+  per-item citations rendered as `[chunk_id] snippet`.
+- The CLI rejects `--profile heuristic` for `audit` with a clear
+  error — the playbook needs an LLM seam and heuristic mode has
+  no `task_client_router`.
+
+### Notes
+
+- Per-item batched judging routes to the bundle's `local` tier
+  (Ollama Qwen2.5-7B in thrifty mode); Opus is reserved for
+  synthesis calls (none in coverage_audit yet).
+
 ## [0.2.3] — 2026-05-23
 
 ### Added

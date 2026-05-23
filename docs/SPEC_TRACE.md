@@ -118,3 +118,4 @@ Row format:
 | §4.5 (orchestrator — tiered routing, local 7B `TaskClient`) | S-110 | src/ctrldoc/orch/task_ollama.py | tests/test_orch_task_ollama.py | covered |
 | §4.5 + §4.7 (`BackendBundle` factory — profile-driven wiring) | S-111 | src/ctrldoc/backends.py | tests/test_backends.py | covered |
 | §4.1 + §6 (CLI `ingest` wired through BackendBundle, Markdown + JSON output) | S-112 | src/ctrldoc/cli.py | tests/test_cli.py | covered |
+| §5.2 + §6 (CLI `audit` wired to CoverageAuditPlaybook, Markdown grouped by verdict) | S-113 | src/ctrldoc/cli_audit.py, src/ctrldoc/cli.py | tests/test_cli_audit.py | covered |

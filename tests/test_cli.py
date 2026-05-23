@@ -431,34 +431,7 @@ def test_qa_emits_structured_stub_envelope() -> None:
     assert isinstance(payload["anthropic_key_present"], bool)
 
 
-# --- audit stub ---
-
-
-def test_audit_requires_existing_checklist(tmp_path: Path) -> None:
-    result = runner.invoke(
-        app,
-        ["audit", str(tmp_path / "missing.jsonl"), "--kind", "coverage"],
-    )
-    assert result.exit_code == 2
-    assert "does not exist" in result.stderr
-
-
-def test_audit_rejects_unknown_kind(tmp_path: Path) -> None:
-    checklist = tmp_path / "items.jsonl"
-    checklist.write_text("", encoding="utf-8")
-    result = runner.invoke(app, ["audit", str(checklist), "--kind", "bogus"])
-    assert result.exit_code == 2
-    assert "must be 'coverage' or 'quality'" in result.stderr
-
-
-def test_audit_coverage_emits_stub(tmp_path: Path) -> None:
-    checklist = tmp_path / "items.jsonl"
-    checklist.write_text("", encoding="utf-8")
-    result = runner.invoke(app, ["audit", str(checklist), "--kind", "coverage"])
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["command"] == "audit"
-    assert payload["inputs"]["kind"] == "coverage"
+# --- audit moved to tests/test_cli_audit.py (S-113) ---
 
 
 # --- review stub ---
