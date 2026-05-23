@@ -1,0 +1,9 @@
+{"id": "qa-001", "tags": ["overview", "positive"], "question": "What is Aurora and what does it provide?", "gold_chunk_ids": ["sec/1#c0", "sec/1#c1"], "should_refuse": false}
+{"id": "qa-002", "tags": ["architecture", "consistent-hashing", "positive"], "question": "How does Aurora partition the key space across nodes?", "gold_chunk_ids": ["sec/1#c1", "sec/2#c0"], "should_refuse": false}
+{"id": "qa-003", "tags": ["consistency", "positive"], "question": "What consistency guarantees does Aurora offer?", "gold_chunk_ids": ["sec/3#c0", "sec/3-1#c0"], "should_refuse": false}
+{"id": "qa-004", "tags": ["fault-tolerance", "multi-hop", "positive"], "question": "What happens when a node fails?", "gold_chunk_ids": ["sec/4#c0", "sec/4#c1"], "should_refuse": false}
+{"id": "qa-005", "tags": ["security", "positive"], "question": "How does Aurora handle authentication?", "gold_chunk_ids": ["sec/5#c0"], "should_refuse": false}
+{"id": "qa-r001", "tags": ["out-of-doc", "refusal"], "question": "What is the maximum recommended size of a single Aurora cluster in petabytes?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "qa-r002", "tags": ["out-of-doc", "refusal"], "question": "When was Aurora first released and by which company?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "qa-r003", "tags": ["out-of-doc", "refusal"], "question": "Does Aurora support SQL queries with JOIN operations?", "gold_chunk_ids": [], "should_refuse": true}
+{"id": "qa-r004", "tags": ["out-of-doc", "refusal"], "question": "What is the licence cost per node for Aurora?", "gold_chunk_ids": [], "should_refuse": true}
