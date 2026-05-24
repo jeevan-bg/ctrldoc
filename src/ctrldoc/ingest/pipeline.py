@@ -18,6 +18,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, NonNegativeInt
 
+from ctrldoc.eval.claim_extraction import ClaimExtractor
+from ctrldoc.extract.claim_persistence import claim_from_tuple
 from ctrldoc.ingest.chunker import DEFAULT_MAX_TOKENS, chunk_sections
 from ctrldoc.ingest.coref import CorefResolver, resolve_sections
 from ctrldoc.ingest.embedder import Embedder
@@ -40,6 +42,7 @@ class IngestStats(BaseModel):
     chunks_indexed: NonNegativeInt
     entities_indexed: NonNegativeInt
     embedded_tokens: NonNegativeInt
+    claims_extracted: NonNegativeInt = 0
 
 
 class IncrementalStats(BaseModel):
@@ -68,8 +71,21 @@ def ingest_document(
     vector_index: VectorIndex,
     bm25_index: BM25Index,
     max_chunk_tokens: int = DEFAULT_MAX_TOKENS,
+    claim_extractor: ClaimExtractor | None = None,
+    doc_id: str | None = None,
 ) -> IngestStats:
-    """Run the full L0 pipeline against `source` and persist into `store`."""
+    """Run the full L0 pipeline against `source` and persist into `store`.
+
+    Optional `claim_extractor` plugs the §6.2 universal-tuple
+    extractor into the pipeline: per chunk emit SVO tuples, adapt
+    each into a persisted `Claim` (content-hashed id), write through
+    `store.append_claim`. Without an extractor the pipeline runs the
+    pre-§6.2 path and zero claims land in the store.
+
+    `doc_id` is the parent document's logical id used as the
+    content-hash prefix for claim identity. Defaults to the source
+    path's stem when omitted.
+    """
     parsed = parser.parse(source)
     parsed = resolve_sections(parsed, coref)
 
@@ -100,11 +116,22 @@ def ingest_document(
         vector_index.add(chunk.id, vector)
         bm25_index.add(chunk.id, chunk.text)
 
+    claims_extracted = 0
+    if claim_extractor is not None:
+        effective_doc_id = doc_id if doc_id is not None else Path(source).stem
+        claims_extracted = _extract_and_persist_claims(
+            chunks=chunks,
+            extractor=claim_extractor,
+            store=store,
+            doc_id=effective_doc_id,
+        )
+
     return IngestStats(
         sections_parsed=len(sections),
         chunks_indexed=len(chunks),
         entities_indexed=len(entities_by_id),
         embedded_tokens=sum(c.token_count for c in chunks),
+        claims_extracted=claims_extracted,
     )
 
 
@@ -206,6 +233,30 @@ def ingest_document_incremental(
         chunks_added=chunks_added,
         chunks_removed=chunks_removed,
     )
+
+
+def _extract_and_persist_claims(
+    *,
+    chunks: list[Chunk],
+    extractor: ClaimExtractor,
+    store: Store,
+    doc_id: str,
+) -> int:
+    """Run the extractor over every chunk and persist resulting claims.
+
+    Iteration order is the chunk order returned by `chunk_sections`
+    (deterministic by section / char_start). Tuples are deduped
+    within a chunk by the extractor itself; the content-hashed
+    `claim_id` then guarantees idempotency across re-runs.
+    """
+    persisted = 0
+    for chunk in chunks:
+        tuples = extractor.extract(chunk.text)
+        for tuple_ in tuples:
+            claim = claim_from_tuple(doc_id=doc_id, chunk=chunk, tuple_=tuple_)
+            store.append_claim(claim)
+            persisted += 1
+    return persisted
 
 
 def _merge_entity(into: dict[str, Entity], entity: Entity) -> None:
