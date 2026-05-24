@@ -24,11 +24,12 @@ SPEC-REF: §6.7 (workspace = shared latent ontology), §9 (CLI surface)
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ctrldoc.models_v1 import Workspace
+from ctrldoc.models_v1 import Concept, Workspace
 from ctrldoc.provenance import Provenance
 from ctrldoc.store.sqlite import SQLiteStore
 
@@ -165,6 +166,24 @@ class WorkspaceManager:
     def get(self, name: str) -> Workspace:
         """Return the persisted `Workspace` or raise `WorkspaceNotFoundError`."""
         return self._require_workspace(name)
+
+    # --- concept lattice slice (§6.7) ---
+
+    def concepts_for_workspace(self, name: str) -> builtins.list[Concept]:
+        """Return the workspace-visible concept-lattice slice (§6.7).
+
+        A concept belongs to the slice when its `doc_ids` intersects
+        the workspace's `doc_ids`. The list is sorted by concept id
+        for byte-deterministic output across runs — the §6.7
+        cross-doc-edge enumeration walks this exact order, so a stable
+        sort here keeps the verdict-ledger replay deterministic
+        (§6.5). Returns the empty list when no member doc has
+        contributed concepts yet.
+        """
+        workspace = self._require_workspace(name)
+        concepts = builtins.list(self._store.concepts_for_workspace(workspace.id))
+        concepts.sort(key=lambda c: c.id)
+        return concepts
 
     # --- internals ---
 

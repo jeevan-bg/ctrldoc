@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 
 from ctrldoc.models import Chunk, Entity, Section
-from ctrldoc.models_v1 import Claim
+from ctrldoc.models_v1 import Claim, Concept
 from ctrldoc.versioning import IndexVersions
 
 
@@ -24,6 +24,7 @@ class InMemoryStore:
         self._sections: dict[str, Section] = {}
         self._entities: dict[str, Entity] = {}
         self._claims: dict[str, Claim] = {}
+        self._concepts: dict[str, Concept] = {}
 
     @property
     def versions(self) -> IndexVersions:
@@ -102,6 +103,29 @@ class InMemoryStore:
             claim = self._claims[claim_id]
             if claim.doc_id == doc_id:
                 yield claim
+
+    # --- v2 concept CRUD (§6.7, §6.8) ---
+
+    def add_concepts(self, concepts: Iterable[Concept]) -> None:
+        """Insert or replace a batch of `Concept` rows (idempotent by id)."""
+        for concept in concepts:
+            self._concepts[concept.id] = concept
+
+    def get_concept(self, concept_id: str) -> Concept | None:
+        return self._concepts.get(concept_id)
+
+    def iter_concepts(self) -> Iterator[Concept]:
+        for concept_id in sorted(self._concepts):
+            yield self._concepts[concept_id]
+
+    def concepts_for_workspace_docs(self, doc_ids: Iterable[str]) -> Iterator[Concept]:
+        """Yield concepts whose `doc_ids` intersects `doc_ids` (§6.7)."""
+        member_docs = set(doc_ids)
+        if not member_docs:
+            return
+        for concept in self.iter_concepts():
+            if member_docs.intersection(concept.doc_ids):
+                yield concept
 
     # --- destructive ops ---
 

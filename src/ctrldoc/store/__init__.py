@@ -14,7 +14,7 @@ from collections.abc import Iterable, Iterator
 from typing import Protocol, runtime_checkable
 
 from ctrldoc.models import Chunk, Entity, Section
-from ctrldoc.models_v1 import Claim
+from ctrldoc.models_v1 import Claim, Concept
 from ctrldoc.versioning import IndexVersions
 
 
@@ -59,6 +59,12 @@ class Store(Protocol):
     def get_claim(self, claim_id: str) -> Claim | None: ...
     def iter_claims(self) -> Iterator[Claim]: ...
     def iter_claims_for_doc(self, doc_id: str) -> Iterator[Claim]: ...
+
+    # --- v2 concept CRUD (§6.7 shared lattice, §6.8 entity resolution) ---
+
+    def add_concepts(self, concepts: Iterable[Concept]) -> None: ...
+    def get_concept(self, concept_id: str) -> Concept | None: ...
+    def iter_concepts(self) -> Iterator[Concept]: ...
 
     # --- destructive ops (§4.7, §8.6 family 13) ---
 
