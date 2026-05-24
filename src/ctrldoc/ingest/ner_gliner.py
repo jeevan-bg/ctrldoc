@@ -33,7 +33,7 @@ class GLiNERTagger:
 
     def _ensure_model(self) -> Any:
         if self._model is None:
-            from gliner import GLiNER  # type: ignore[import-untyped]
+            from gliner import GLiNER  # type: ignore[import-untyped,import-not-found,unused-ignore]
 
             self._model = GLiNER.from_pretrained(self._model_name)
         return self._model

@@ -6,7 +6,126 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Added
+_(Empty — the v1.0.0 line below freezes the v1.0 arc; subsequent slices accumulate here.)_
+
+## [1.0.0] — 2026-05-24
+
+**Universal claim-graph substrate.** The v0.3 per-use-case playbook
+layer is gone; every operation now flows through one claim graph
+(L1.5) + workspace (L2.5) primitive plus the optimal-transport core
+(L5). The v0.3 surface is preserved unchanged — `ingest`, `qa`,
+`scan`, `map`, `audit`, `review` all keep their reports and JSON
+payloads — and is now layered on top of the universal substrate.
+
+**v1 additions over the v0.3 release (`0.3.0`, see below):**
+
+- **L1.5 claim graph.** Universal claim tuple as the logic floor
+  (`(subject, predicate, object, polarity, modality, qualifier,
+  span_refs, confidence)` per SPEC §6.2). Tier-1 deterministic
+  extractor (Hearst patterns + heading-tree containment + PMI
+  related-to + lexical-identity coref); Tier-2 SVO extractor over
+  spaCy `en_core_web_sm` with copular / passive / modal-passive /
+  agent-PP / advcl-xcomp coverage; Tier-2 NLI edge inferer with
+  candidate retrieval (k=5 default) — never quadratic. Galois
+  subsumption lattice (`equivalent` / `subsumes` / `subsumed_by` /
+  `incomparable`) with `claim_join` (LUB) and `claim_meet` (GLB).
+  Entity resolution (cosine blocking + `ERJudge` Protocol +
+  union-find + canonical concept emission).
+- **L2.5 workspace.** `Workspace` CRUD (`create` / `add` / `list` /
+  `info`) over `SQLiteStore` with content-derived ids for replay
+  stability; order-preserving doc membership; shared concept lattice
+  via doc-id intersection. Cross-doc edge inferer (`aligned_with`,
+  `entails_across`, `contradicts_across`) with linear `k * |A|` cost
+  per ordered doc pair; source-span citations in both endpoint docs
+  (SPEC §13 non-negotiable #11). `ctrldoc workspace` sub-app.
+- **L0 schema co-induction.** Max-entropy chunk sample → single
+  batched LLM call → JSON schema cached as deterministic block-style
+  YAML. Residual EM loop re-induces on `unmatched_claim_rate > 0.20`,
+  region-scoped re-extraction over affected sections only.
+- **L3 probabilistic edges + calibration.** Paraphrase voting
+  (3–5 paraphrases of the hypothesis; agreement rate vs binary
+  correctness correlates with ρ ≥ 0.5 per SPEC §6.5). Isotonic
+  calibration via pool-adjacent-violators; `CalibratedNLIScorer` wraps
+  any raw backend; one-shot per-backend ECE measurement with release
+  gate `CALIBRATION_ECE_THRESHOLD = 0.05` (SPEC §13 non-negotiable #9).
+- **L5 optimal-transport engine.** `TransportProblem` (balanced
+  bipartite input shape) + two solvers: `min_cost_transport`
+  (successive shortest paths with Dijkstra-and-potentials on the
+  residual graph; many-to-one transport) and `sinkhorn` (entropy-
+  regularised Sinkhorn-Knopp on the Gibbs kernel). Pure-Python,
+  stdlib-only, byte-deterministic across runs.
+- **L5 universal operations.** `coverage` + `list_check` via the
+  transport reduction with slack column priced at `1 - threshold`;
+  `compare` (per-cluster `StrengthA` / `StrengthB` / `Gap`) with
+  Galois floor first and asymmetric NLI fallback in both directions;
+  `merge` with union-find + Galois-join representative selection,
+  satisfying the §13 loss-invariant non-negotiable #10 by
+  construction (every input claim maps to exactly one output cluster).
+- **L2 graph-walk retrieval.** Personalized PageRank over typed
+  claim-graph edges with the §6.9 three-tier edge-weight ladder.
+  `GraphWalkRetriever` harvests top-k concepts by stationary
+  probability and maps to anchored chunk ids for the existing
+  dense ⊕ BM25 ⊕ entity fusion step. Release gate
+  `PPR_RECALL_LIFT_THRESHOLD = 0.10` ("≥ 10 % recall lift on
+  multi-hop queries").
+- **L4 tool-using orchestrator + verdict ledger.** §6.10 13-tool
+  surface (`lookup_concept`, `get_claim`, `traverse`, `entails`,
+  `subsumes`, `optimal_transport`, `coverage`, `compare`, `merge`,
+  `list_check`, `map`, `qa`, `calibration`) with strict frozen
+  Pydantic input/output schemas + semver-pinned
+  `TOOL_SURFACE_VERSION` (SPEC §13 non-negotiable #14). Append-only
+  `verdict_ledger` table with `VerdictLedger` facade (`append` /
+  `get` / `list_entries` / `replay`); replay determinism gated at
+  `REPLAY_TOLERANCE = 0.02` (SPEC §13 non-negotiable #13).
+  `ctrldoc ledger {list, show, replay}` sub-app.
+- **MCP server.** `ctrldoc mcp serve` — Model Context Protocol over
+  stdio (JSON-RPC 2.0). Implements `initialize` / `tools/list` /
+  `tools/call` directly over the L4 dispatcher; `serverInfo.version`
+  ships `TOOL_SURFACE_VERSION` so hosts detect schema drift at the
+  handshake. Wire-compatible with stock MCP clients (Claude Desktop,
+  Claude CLI). ADR-0007 records the in-house-vs-SDK transport
+  decision.
+- **Storage schema v2.** Six new tables — `claims`, `concepts`,
+  `typed_edges`, `workspaces`, `cross_doc_edges`, `verdict_ledger` —
+  provisioned alongside the v0.3 chunk / section / entity layout.
+  `SCHEMA_VERSION` bumped `"0.1.0"` → `"0.2.0"` so v0.3 indexes
+  refuse to open under v1 and must be re-ingested. See
+  [`MIGRATION_v0.3_to_v1.0.md`](MIGRATION_v0.3_to_v1.0.md) for the
+  upgrade walkthrough.
+- **Real-doc shakedown corpus + smoke.** `tests/fixtures/real_docs/`
+  ships a hand-built realistically-shaped corpus spanning every §16
+  doc-type axis (spec, legal, academic, educational, narrative,
+  spec-vs-impl pair). `scripts/real_doc_smoke.sh` runs every doc
+  through the full L0 ingest + scan + workspace pipeline on the
+  heuristic profile in ~20 seconds. No LLM, no Ollama, no network.
+- **README + ARCHITECTURE rewrites.** README advertises the v1
+  surface (workspace / coverage / compare / merge / mcp commands);
+  ARCHITECTURE describes the v1 9-layer stack including L1.5 claim
+  graph, L2.5 workspace, the optimal-transport core, and the MCP
+  integration.
+- **`examples/v1/`.** Three runnable v1 walkthroughs (workspace,
+  coverage-via-transport, merge-via-transport) — hermetic, no LLM
+  credentials required.
+
+**Breaking changes:**
+
+- Storage `SCHEMA_VERSION` bumped `"0.1.0"` → `"0.2.0"`; v0.3 indexes
+  refuse to open under v1. No in-place data migration — re-ingest.
+- The v0.3 per-use-case L5 package was removed from disk. Every
+  symbol is re-homed under `ctrldoc.ops.*` along its CLI-aligned name
+  — see the rename table in [`MIGRATION_v0.3_to_v1.0.md`](MIGRATION_v0.3_to_v1.0.md).
+
+**Preserved verbatim from v0.3:**
+
+- The two pillars (stateless tasks + shared prompt cache, SPEC §4.1).
+- Non-negotiables #1–5 (no raw doc to LLM; every claim cited or
+  refused; every sub-task is stateless; storage is abstracted;
+  every output carries provenance).
+- The full v0.3 CLI surface (`ingest`, `qa`, `scan`, `map`, `audit`,
+  `review`) — now thin adapters over the universal substrate.
+- The 14 test families (SPEC §8.6 / §14); pytest markers unchanged.
+
+### Added (per-slice detail, S-119 through S-147)
 
 - Real-doc shakedown corpus + smoke script (SPEC §16). A new
   `tests/fixtures/real_docs/` directory ships a hand-built corpus

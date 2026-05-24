@@ -1,3 +1,3 @@
-"""ctrldoc — citation-grounded analysis of large documents."""
+"""ctrldoc — universal claim-graph substrate for multi-document analysis."""
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
