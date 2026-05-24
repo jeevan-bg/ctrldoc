@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 
 from ctrldoc.models import Chunk, Entity, Section
+from ctrldoc.models_v1 import Claim
 from ctrldoc.versioning import IndexVersions
 
 
@@ -22,6 +23,7 @@ class InMemoryStore:
         self._chunks: dict[str, Chunk] = {}
         self._sections: dict[str, Section] = {}
         self._entities: dict[str, Entity] = {}
+        self._claims: dict[str, Claim] = {}
 
     @property
     def versions(self) -> IndexVersions:
@@ -82,6 +84,24 @@ class InMemoryStore:
             if source_chunks.intersection(other.mention_chunk_ids):
                 neighbors.add(other.id)
         return sorted(neighbors)
+
+    # --- v2 claim CRUD (§6.2, §6.4 universal-tuple persistence) ---
+
+    def append_claim(self, claim: Claim) -> None:
+        self._claims[claim.id] = claim
+
+    def get_claim(self, claim_id: str) -> Claim | None:
+        return self._claims.get(claim_id)
+
+    def iter_claims(self) -> Iterator[Claim]:
+        for claim_id in sorted(self._claims):
+            yield self._claims[claim_id]
+
+    def iter_claims_for_doc(self, doc_id: str) -> Iterator[Claim]:
+        for claim_id in sorted(self._claims):
+            claim = self._claims[claim_id]
+            if claim.doc_id == doc_id:
+                yield claim
 
     # --- destructive ops ---
 

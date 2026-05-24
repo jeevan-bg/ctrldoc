@@ -30,8 +30,8 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from types import TracebackType
 
-from ctrldoc.models import Chunk, Entity, Section
-from ctrldoc.models_v1 import Concept, Workspace
+from ctrldoc.models import Chunk, Entity, Section, Span
+from ctrldoc.models_v1 import Claim, Concept, Workspace
 from ctrldoc.provenance import Provenance, now_iso
 from ctrldoc.versioning import IndexVersions
 
@@ -431,6 +431,66 @@ class SQLiteStore:
             if cursor.rowcount == 0:
                 raise KeyError(f"workspace not found: {workspace_id!r}")
 
+    # --- v2 claim CRUD (§6.2, §6.4 universal-tuple persistence) ---
+
+    def append_claim(self, claim: Claim) -> None:
+        """Insert or replace one `Claim` row.
+
+        Idempotent on `claim.id` — the id is a content hash over the
+        six logical slots plus the doc / chunk binding (§6.2), so
+        same-id ⇒ overwrite mirrors the §4.1 "ingest is idempotent
+        and cacheable" property. Re-ingesting the same doc never
+        produces duplicate rows.
+        """
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO claims
+                    (id, doc_id, text, subject, predicate, object,
+                     polarity, modality, qualifier_json, span_refs_json,
+                     section_id, concept_ids_json, typed_slots_json,
+                     confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    claim.id,
+                    claim.doc_id,
+                    claim.text,
+                    claim.subject,
+                    claim.predicate,
+                    claim.object,
+                    claim.polarity,
+                    claim.modality,
+                    json.dumps(dict(claim.qualifier)),
+                    json.dumps([s.model_dump() for s in claim.span_refs]),
+                    claim.section_id,
+                    json.dumps(list(claim.concept_ids)),
+                    json.dumps(dict(claim.typed_slots)),
+                    float(claim.confidence),
+                ),
+            )
+
+    def get_claim(self, claim_id: str) -> Claim | None:
+        row = self._conn.execute("SELECT * FROM claims WHERE id = ?", (claim_id,)).fetchone()
+        return _row_to_claim(row) if row is not None else None
+
+    def iter_claims(self) -> Iterator[Claim]:
+        """Yield every persisted claim in ascending id order.
+
+        The `id` is a sha256 content hash so ordering is stable across
+        runs — guards downstream determinism (§13 non-negotiable 4).
+        """
+        for row in self._conn.execute("SELECT * FROM claims ORDER BY id"):
+            yield _row_to_claim(row)
+
+    def iter_claims_for_doc(self, doc_id: str) -> Iterator[Claim]:
+        """Yield claims belonging to one `doc_id`, in ascending id order."""
+        for row in self._conn.execute(
+            "SELECT * FROM claims WHERE doc_id = ? ORDER BY id",
+            (doc_id,),
+        ):
+            yield _row_to_claim(row)
+
     # --- v2 concept CRUD (§6.7 shared concept lattice) ---
 
     def add_concepts(self, concepts: Iterable[Concept]) -> None:
@@ -640,6 +700,25 @@ def _row_to_workspace(row: sqlite3.Row) -> Workspace:
         doc_ids=list(json.loads(row["doc_ids_json"])),
         induced_schema=dict(json.loads(row["induced_schema_json"])),
         provenance=Provenance.model_validate_json(row["provenance_json"]),
+    )
+
+
+def _row_to_claim(row: sqlite3.Row) -> Claim:
+    return Claim(
+        id=row["id"],
+        doc_id=row["doc_id"],
+        text=row["text"],
+        subject=row["subject"],
+        predicate=row["predicate"],
+        object=row["object"],
+        polarity=row["polarity"],
+        modality=row["modality"],
+        qualifier=dict(json.loads(row["qualifier_json"])),
+        span_refs=[Span(**s) for s in json.loads(row["span_refs_json"])],
+        section_id=row["section_id"],
+        concept_ids=list(json.loads(row["concept_ids_json"])),
+        typed_slots=dict(json.loads(row["typed_slots_json"])),
+        confidence=float(row["confidence"]),
     )
 
 
