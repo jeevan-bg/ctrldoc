@@ -1,4 +1,4 @@
-"""Adapter: extractor `ClaimTuple` → persisted `Claim`.
+"""Adapter: extractor `ClaimTuple` ↔ persisted `Claim`.
 
 The §6.2 universal claim tuple is what the SVO extractor (and the
 Tier-3 layers above it) emit. The §7 / §8 data model stores a
@@ -18,6 +18,11 @@ This module is the canonical seam between the two shapes.
   `dict[str, object]` shape, anchors one `Span` covering the source
   chunk, and assigns a deterministic floor `confidence = 1.0`
   (pre-calibration; Tier-3 layers replace this).
+* `claim_to_tuple` is the inverse: persisted `Claim` back to the §6.2
+  universal tuple. Used by every consumer that needs to feed a
+  persisted claim into a tuple-shaped engine (the §6.3 Galois floor,
+  the §6.6 optimal-transport reductions in `ctrldoc.ops.coverage`,
+  the MCP `coverage` / `list_check` handlers).
 
 SPEC-REF: §6.2, §6.4
 """
@@ -149,7 +154,67 @@ def claim_from_tuple(
     )
 
 
+# Inverse mappings — persisted alphabet → §6.2 surface alphabet. Used
+# by `claim_to_tuple` below and by consumers that prefer to import the
+# tables directly.
+_PERSISTED_TO_SURFACE_POLARITY: dict[PersistedPolarity, SurfacePolarity] = {
+    "+": "affirmative",
+    "-": "negative",
+}
+
+_PERSISTED_TO_SURFACE_MODALITY: dict[PersistedModality | None, SurfaceModality] = {
+    "assert": "asserted",
+    "must": "obligatory",
+    # `shall` collapses with `must` on the deontic chain (RFC-2119
+    # treats them as synonymous; the storage alphabet keeps both for
+    # surface-form fidelity, but §6.3's lattice cares about logical
+    # force only).
+    "shall": "obligatory",
+    "may": "permitted",
+    "should": "recommended",
+    "neg": "prohibited",
+    # `None` is the documented "modality was not bound" sentinel from
+    # the §7 storage alphabet — projects back to the universal-tuple
+    # neutral descriptive force.
+    None: "asserted",
+}
+
+
+def claim_to_tuple(claim: Claim) -> ClaimTuple:
+    """Convert a persisted `Claim` back into the §6.2 universal tuple.
+
+    The inverse of `claim_from_tuple`'s alphabet mapping. Subject and
+    object slots on a persisted claim may be `None` (the §7 storage
+    alphabet permits it) — the universal tuple expects strings, so we
+    coerce `None` to the empty string. The Galois floor and the §6.6
+    transport reduction both treat empty strings as distinct from any
+    non-empty value, so the structural-floor verdict's correctness is
+    preserved.
+
+    The qualifier slot on the §7 record is a free-form
+    ``dict[str, object]``; the §6.2 tuple carries a plain text string.
+    This adapter reads the ``"text"`` key written by `claim_from_tuple`
+    and falls back to the empty string for any other shape (heuristic
+    or LLM-induced claims that put a different structured payload
+    there). Non-textual qualifiers are intentionally dropped at this
+    seam — the tuple-shaped engines reason on text only.
+    """
+    qualifier_text = ""
+    raw = claim.qualifier.get("text") if isinstance(claim.qualifier, dict) else None
+    if isinstance(raw, str):
+        qualifier_text = raw
+    return ClaimTuple(
+        subject=claim.subject or "",
+        predicate=claim.predicate,
+        object=claim.object or "",
+        polarity=_PERSISTED_TO_SURFACE_POLARITY[claim.polarity],
+        modality=_PERSISTED_TO_SURFACE_MODALITY[claim.modality],
+        qualifier=qualifier_text,
+    )
+
+
 __all__ = [
     "claim_from_tuple",
     "claim_id_for_tuple",
+    "claim_to_tuple",
 ]

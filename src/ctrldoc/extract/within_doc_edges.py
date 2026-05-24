@@ -53,7 +53,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from ctrldoc.eval.claim_extraction import ClaimTuple
+from ctrldoc.extract.claim_persistence import claim_to_tuple as _persisted_to_tuple
 from ctrldoc.extract.galois import claim_subsumption
 from ctrldoc.extract.tier2_nli import (
     NLIScorer,
@@ -61,7 +61,7 @@ from ctrldoc.extract.tier2_nli import (
     Tier2NLIEdgeInferer,
 )
 from ctrldoc.models import Span
-from ctrldoc.models_v1 import Claim, ModalityLiteral, PolarityLiteral, TypedEdge
+from ctrldoc.models_v1 import Claim, TypedEdge
 
 # Heuristic prior every Galois-derived edge carries. Mirrors
 # `tier1.HEURISTIC_CONFIDENCE` — the §6.5 fixed prior for any
@@ -70,64 +70,13 @@ HEURISTIC_CONFIDENCE: float = 0.9
 
 
 # ---------------------------------------------------------------------------
-# Persisted <-> universal-tuple alphabet mapping
+# Persisted → universal-tuple alphabet mapping
 # ---------------------------------------------------------------------------
-
-
-# Inverse of the §7 → §6.2 mapping in ``claim_persistence._POLARITY_MAP``.
-# The Galois floor reasons on the §6.2 surface alphabet; persisted
-# claims carry the §7 storage alphabet (`+` / `-`).
-_PERSISTED_TO_SURFACE_POLARITY: dict[PolarityLiteral, str] = {
-    "+": "affirmative",
-    "-": "negative",
-}
-
-
-# Inverse of ``claim_persistence._MODALITY_MAP``. The persisted ``None``
-# slot ("modality was not bound") maps back to ``"asserted"`` — the
-# universal-tuple alphabet's neutral descriptive force. `shall` aliases
-# with `must` on the deontic chain (RFC-2119 treats them as
-# synonymous; the storage alphabet keeps both for surface-form fidelity
-# but the §6.3 lattice cares about logical force only).
-_PERSISTED_TO_SURFACE_MODALITY: dict[ModalityLiteral | None, str] = {
-    "assert": "asserted",
-    "must": "obligatory",
-    "shall": "obligatory",
-    "may": "permitted",
-    "should": "recommended",
-    "neg": "prohibited",
-    None: "asserted",
-}
-
-
-def _persisted_to_tuple(claim: Claim) -> ClaimTuple:
-    """Convert a persisted ``Claim`` back into the §6.2 universal tuple.
-
-    The Galois lattice and the Tier-2 NLI inferer both consume the
-    §6.2 surface alphabet (`affirmative`/`negative`, the six-way
-    modality literal, qualifier as plain text). This adapter is the
-    inverse of ``claim_persistence.claim_from_tuple``'s alphabet
-    mapping.
-
-    Subject / object slots may be ``None`` on persisted claims (the
-    §7 storage alphabet permits it) — the universal tuple expects
-    strings, so we coerce ``None`` to the empty string. The Galois
-    floor's ``_svo_equal`` normalizer treats empty strings as
-    distinct from any non-empty value, so this preserves the
-    structural-floor verdict's correctness.
-    """
-    qualifier_text = ""
-    raw = claim.qualifier.get("text") if isinstance(claim.qualifier, dict) else None
-    if isinstance(raw, str):
-        qualifier_text = raw
-    return ClaimTuple(
-        subject=claim.subject or "",
-        predicate=claim.predicate,
-        object=claim.object or "",
-        polarity=_PERSISTED_TO_SURFACE_POLARITY[claim.polarity],  # type: ignore[arg-type]
-        modality=_PERSISTED_TO_SURFACE_MODALITY[claim.modality],  # type: ignore[arg-type]
-        qualifier=qualifier_text,
-    )
+#
+# The shared converter lives in `ctrldoc.extract.claim_persistence`
+# (the natural home for the §6.2 ↔ §7 alphabet seam). This module
+# imports it as `_persisted_to_tuple` so its existing call sites stay
+# stable.
 
 
 # ---------------------------------------------------------------------------

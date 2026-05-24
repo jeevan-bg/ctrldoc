@@ -1,4 +1,4 @@
-"""Pure-Python + storage-backed MCP handler factory for the §6.10 tool surface.
+"""Pure-Python + storage-backed + OT-backed MCP handler factory for the §6.10 tool surface.
 
 The L4 tool surface in `ctrldoc.orch.tools` is a registry of input /
 output schemas; engines plug in via
@@ -7,9 +7,11 @@ output schemas; engines plug in via
 into the dispatcher are reachable over the JSON-RPC 2.0 stdio
 transport described in §11.
 
-This module ships the **pure-Python** + **storage-backed** waves of
-handlers — the six tools whose engines need only structural
-primitives or a per-doc SQLite store, no LLM call, no network.
+This module ships the **pure-Python**, **storage-backed**, and
+**OT-backed** waves of handlers — the eight tools whose engines need
+only structural primitives, a per-doc SQLite store, or the
+optimal-transport core in `ctrldoc.ops.coverage`; no LLM call, no
+network.
 
 Pure-Python handlers
 --------------------
@@ -59,6 +61,31 @@ Storage-backed handlers
   itself is trimmed from the output so the caller sees only the
   nodes the walk reached.
 
+OT-backed handlers
+------------------
+
+* ``coverage`` → `ops.coverage.coverage` over the persisted `Claim`
+  rows of two docs in a workspace. The handler resolves
+  `target_doc_id` and `source_doc_id` to lists of `Claim` via the
+  injected ``claims_for_doc_supplier``, converts each `Claim` back to
+  the §6.2 universal tuple via
+  :func:`ctrldoc.extract.claim_persistence.claim_to_tuple`, runs the
+  §6.6 transport reduction with the injected ``nli_scorer``, then
+  lifts the per-target `Covered` / `Missing` verdicts into a full §7
+  ``CoverageReport`` — pinned to the workspace id, target id, source
+  id, with one `CoverageVerdict` per target claim carrying the
+  aligned source-claim ids, the transport cost, and the calibrated
+  confidence.
+
+* ``list_check`` → `ops.coverage.list_check` with the items list
+  parsed as a tiny target doc per §6.6 framing
+  (``list_check(items, D) == coverage(items → D)``). Each
+  `ListCheckItem` becomes a `ClaimTuple` whose `subject` slot carries
+  the item text; the persisted doc claims act as sources. Verdicts
+  surface as the four-class partition shared with `coverage` —
+  S-159 surfaces `Covered` / `Missing` only; richer partials land
+  with the calibrated edge layer in later slices.
+
 Wiring policy
 -------------
 
@@ -78,6 +105,10 @@ handlers whose dependencies are satisfied:
 * ``get_claim`` — wires only when ``deps.claim_record_lookup`` is set.
 * ``lookup_concept`` — wires only when ``deps.concept_name_lookup`` is set.
 * ``traverse`` — wires only when ``deps.typed_edges_supplier`` is set.
+* ``coverage`` and ``list_check`` — each wires only when both
+  ``deps.claims_for_doc_supplier`` and ``deps.nli_scorer`` are set.
+  Either dep missing leaves the tool unregistered so the dispatcher
+  refuses the call rather than fabricating a verdict.
 
 The factory returns the `frozenset` of wired tool names so callers
 can log the surface they actually exposed.
@@ -89,10 +120,10 @@ an `MCPHandlerDeps` ready to plug into the dispatcher. The runtime
 cost is linear in the number of per-doc stores; the v1 workspace
 cardinality (handful of docs) makes the scan negligible.
 
-The downstream waves of MCP handlers ship in S-159 / S-160 (OT-backed:
-``coverage`` / ``list_check`` / ``compare`` / ``merge``) and S-161
-(LLM-backed: ``entails`` / ``qa`` / ``map``). Each will plug in via
-the same `register_handler` seam — this module does not own those.
+The downstream waves of MCP handlers ship in S-160 (OT-backed:
+``compare`` / ``merge``) and S-161 (LLM-backed: ``entails`` / ``qa``
+/ ``map``). Each will plug in via the same `register_handler` seam —
+this module does not own those.
 
 SPEC-REF: §6.10 (tool-using orchestrator), §11 (MCP server)
 """
@@ -106,15 +137,42 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from ctrldoc.eval.claim_extraction import ClaimTuple
+from ctrldoc.extract.claim_persistence import claim_to_tuple
 from ctrldoc.extract.galois import claim_subsumption
 from ctrldoc.extract.isotonic_calibration import fit_per_backend_ece
-from ctrldoc.models_v1 import Claim, Concept, TypedEdge
+from ctrldoc.models_v1 import (
+    Claim,
+    Concept,
+    CoverageReport,
+    CoverageSummary,
+    CoverageVerdict,
+    ProofTrace,
+    TypedEdge,
+    VerdictLiteral,
+)
+from ctrldoc.ops.coverage import (
+    CoverageConfig,
+    CoverageResult,
+    NLIScorer,
+)
+from ctrldoc.ops.coverage import (
+    coverage as ops_coverage,
+)
+from ctrldoc.ops.coverage import (
+    list_check as ops_list_check,
+)
 from ctrldoc.ops.transport import TransportProblem, min_cost_transport
 from ctrldoc.orch.tools import (
     CalibrationInput,
     CalibrationOutput,
+    CoverageInput,
+    CoverageOutput,
     GetClaimInput,
     GetClaimOutput,
+    ListCheckInput,
+    ListCheckItem,
+    ListCheckOutput,
+    ListCheckVerdict,
     LookupConceptInput,
     LookupConceptOutput,
     OptimalTransportInput,
@@ -191,6 +249,17 @@ materialisation of a SQLite cursor) — the handler treats the result
 as opaque and walks it via :class:`GraphWalkRetriever`.
 """
 
+ClaimsForDocSupplier = Callable[[str], Sequence[Claim]]
+"""Yield the persisted `Claim` rows belonging to one `doc_id`.
+
+Called by the OT-backed `coverage` / `list_check` handlers — each
+runs at most twice per invocation (once per doc). Implementations
+may pull from a SQLite store, an in-memory dict, or any other
+adapter. An unknown doc id should surface as an empty sequence (the
+faithful "no claims for this doc" answer); the handler treats that
+case as the all-Missing degenerate path.
+"""
+
 
 @dataclass(frozen=True)
 class MCPHandlerDeps:
@@ -225,6 +294,17 @@ class MCPHandlerDeps:
     typed_edges_supplier: TypedEdgesSupplier | None = None
     """If set, the `traverse` handler walks the typed-edge graph yielded
     by this supplier. If `None`, `traverse` stays unwired."""
+
+    claims_for_doc_supplier: ClaimsForDocSupplier | None = None
+    """If set together with `nli_scorer`, the OT-backed `coverage` and
+    `list_check` handlers resolve per-doc claim lists through this
+    function. Either dep missing leaves both tools unwired."""
+
+    nli_scorer: NLIScorer | None = None
+    """If set together with `claims_for_doc_supplier`, the OT-backed
+    `coverage` and `list_check` handlers consume this scorer as the
+    §6.6 entailment backend. Either dep missing leaves both tools
+    unwired."""
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +493,207 @@ def _bfs_within_hops(*, seed: str, edges: Sequence[TypedEdge], hops: int) -> set
     return visited
 
 
+# ---------------------------------------------------------------------------
+# OT-backed `coverage` / `list_check` handlers — §6.6 transport reduction
+# ---------------------------------------------------------------------------
+
+
+# Calibrated confidence for §7 `CoverageVerdict` rows derived from the
+# transport plan. The slack/real mass split is the natural calibrated
+# probability the §6.6 reduction emits: `real_mass` for `Covered`
+# (the column's mass came from real sources), `slack_mass` for
+# `Missing` (the slack column dominated). Pre-isotonic; the §6.5
+# calibration layer refines these scores later.
+_VERDICT_TO_CALIBRATED_MASS: dict[VerdictLiteral, str] = {
+    "Covered": "real_mass",
+    "Missing": "slack_mass",
+}
+
+
+def _build_coverage_report(
+    *,
+    workspace_id: str,
+    target_doc_id: str,
+    source_doc_id: str,
+    target_claims: Sequence[Claim],
+    source_claims: Sequence[Claim],
+    result: CoverageResult,
+) -> CoverageReport:
+    """Lift a `CoverageResult` plus its inputs into a §7 `CoverageReport`.
+
+    Per-claim row carries the target's persisted id, the verdict, the
+    aligned source-claim ids (resolved through the source list via the
+    transport plan's per-column readout), the transport cost, and the
+    calibrated confidence (the column's real or slack mass depending
+    on the verdict). The summary's four rates partition the target
+    claim count.
+
+    Empty-target short-circuit: every rate is zero except `covered_rate`
+    which inherits the vacuous 1.0 — `CoverageSummary` enforces the
+    sum-to-one invariant, so the all-covered degenerate is the only
+    valid "no targets" surface. Empty-source: `assignments` carries
+    one all-Missing row per target (every target is uncovered), which
+    is what the assembled report reflects.
+    """
+    per_claim: list[CoverageVerdict] = []
+    counts = {"Covered": 0, "Partial": 0, "Missing": 0, "Contradicted": 0}
+    for j, target in enumerate(target_claims):
+        verdict = result.verdicts[j]
+        assignment = result.assignments[j]
+        aligned = [source_claims[i].id for i in assignment.aligned_source_indices]
+        mass_attr = _VERDICT_TO_CALIBRATED_MASS.get(verdict)
+        calibrated = (
+            getattr(assignment, mass_attr) if mass_attr is not None else assignment.real_mass
+        )
+        # Clamp to the unit interval — guards against IEEE-754 drift
+        # in the plan's marginals (the engine balances within 1e-9).
+        calibrated = max(0.0, min(1.0, calibrated))
+        per_claim.append(
+            CoverageVerdict(
+                target_claim_id=target.id,
+                verdict=verdict,
+                aligned_source_claims=aligned,
+                transport_cost=assignment.transport_cost,
+                calibrated_confidence=calibrated,
+                trace=ProofTrace(steps=["coverage", "render_claim", "nli_entail", "transport"]),
+            )
+        )
+        counts[verdict] += 1
+
+    total = max(1, len(target_claims))  # avoid div-by-zero on empty target
+    if not target_claims:
+        summary = CoverageSummary(
+            covered_rate=1.0,
+            partial_rate=0.0,
+            missing_rate=0.0,
+            contradicted_rate=0.0,
+        )
+    else:
+        summary = CoverageSummary(
+            covered_rate=counts["Covered"] / total,
+            partial_rate=counts["Partial"] / total,
+            missing_rate=counts["Missing"] / total,
+            contradicted_rate=counts["Contradicted"] / total,
+        )
+
+    return CoverageReport(
+        workspace_id=workspace_id,
+        target_doc_id=target_doc_id,
+        source_doc_id=source_doc_id,
+        per_claim=per_claim,
+        summary=summary,
+    )
+
+
+def _make_coverage_handler(
+    *,
+    claims_for_doc_supplier: ClaimsForDocSupplier,
+    nli_scorer: NLIScorer,
+) -> ToolHandler:
+    """Bind `ops.coverage.coverage` to the §6.10 `coverage` schema.
+
+    Resolves `target_doc_id` and `source_doc_id` to persisted `Claim`
+    lists via the supplier, converts each to the §6.2 universal tuple,
+    runs the transport reduction, and lifts the result into a
+    `CoverageReport` pinned to the call's workspace id.
+    """
+
+    def _handler(inp: BaseModel) -> CoverageOutput:
+        assert isinstance(inp, CoverageInput), inp
+        target_claims = list(claims_for_doc_supplier(inp.target_doc_id))
+        source_claims = list(claims_for_doc_supplier(inp.source_doc_id))
+        target_tuples = [claim_to_tuple(c) for c in target_claims]
+        source_tuples = [claim_to_tuple(c) for c in source_claims]
+        result = ops_coverage(
+            source=source_tuples,
+            target=target_tuples,
+            scorer=nli_scorer,
+            config=CoverageConfig(),
+        )
+        report = _build_coverage_report(
+            workspace_id=inp.workspace_id,
+            target_doc_id=inp.target_doc_id,
+            source_doc_id=inp.source_doc_id,
+            target_claims=target_claims,
+            source_claims=source_claims,
+            result=result,
+        )
+        return CoverageOutput(report=report)
+
+    return _handler
+
+
+def _items_to_target_tuples(items: Sequence[ListCheckItem]) -> list[ClaimTuple]:
+    """Convert `ListCheckItem` rows into §6.2 tuples — subject = item text.
+
+    The §6.6 framing of `list_check(items, D) == coverage(items → D)`
+    treats each item as a degenerate claim: the rendered surface is the
+    item text. The cleanest mapping is to put the text in the
+    `subject` slot and leave `predicate` / `object` empty, so the
+    `ops.coverage._render_claim` helper produces the verbatim text.
+    """
+    tuples: list[ClaimTuple] = []
+    for item in items:
+        tuples.append(
+            ClaimTuple(
+                subject=item.text,
+                predicate="",
+                object="",
+                polarity="affirmative",
+                modality="asserted",
+                qualifier="",
+            )
+        )
+    return tuples
+
+
+def _make_list_check_handler(
+    *,
+    claims_for_doc_supplier: ClaimsForDocSupplier,
+    nli_scorer: NLIScorer,
+) -> ToolHandler:
+    """Bind `ops.coverage.list_check` to the §6.10 `list_check` schema.
+
+    Each `ListCheckItem` becomes a `ClaimTuple` with the item text as
+    the `subject` slot (predicate / object empty); the persisted doc
+    claims act as sources. Output is one `ListCheckVerdict` per item in
+    input order, verdict from the shared four-class partition and
+    confidence equal to the column's real-mass split for `Covered`
+    targets, slack-mass for `Missing` ones.
+    """
+
+    def _handler(inp: BaseModel) -> ListCheckOutput:
+        assert isinstance(inp, ListCheckInput), inp
+        target_tuples = _items_to_target_tuples(inp.items)
+        source_claims = list(claims_for_doc_supplier(inp.doc_id))
+        source_tuples = [claim_to_tuple(c) for c in source_claims]
+        result = ops_list_check(
+            items=target_tuples,
+            doc=source_tuples,
+            scorer=nli_scorer,
+            config=CoverageConfig(),
+        )
+        verdicts: list[ListCheckVerdict] = []
+        for j, item in enumerate(inp.items):
+            verdict = result.verdicts[j]
+            assignment = result.assignments[j]
+            mass_attr = _VERDICT_TO_CALIBRATED_MASS.get(verdict)
+            calibrated = (
+                getattr(assignment, mass_attr) if mass_attr is not None else assignment.real_mass
+            )
+            calibrated = max(0.0, min(1.0, calibrated))
+            verdicts.append(
+                ListCheckVerdict(
+                    item_id=item.item_id,
+                    verdict=verdict,
+                    confidence=calibrated,
+                )
+            )
+        return ListCheckOutput(verdicts=verdicts)
+
+    return _handler
+
+
 def _make_calibration_handler(
     calibration_data: CalibrationData | None,
 ) -> ToolHandler:
@@ -474,11 +755,14 @@ def register_default_handlers(
     * ``get_claim`` — wires only if ``deps.claim_record_lookup`` is set.
     * ``lookup_concept`` — wires only if ``deps.concept_name_lookup`` is set.
     * ``traverse`` — wires only if ``deps.typed_edges_supplier`` is set.
+    * ``coverage`` and ``list_check`` — each wires only if BOTH
+      ``deps.claims_for_doc_supplier`` and ``deps.nli_scorer`` are set.
+      Either dep missing leaves both tools unwired.
 
     Re-registering replaces the previous handler (the dispatcher
     documents this), so callers can layer richer LLM-backed handlers
-    (S-161) on top of this factory's pure-Python + storage-backed
-    floor.
+    (S-161) on top of this factory's pure-Python + storage-backed +
+    OT-backed floor.
     """
     wired: set[str] = set()
 
@@ -505,6 +789,24 @@ def register_default_handlers(
     if deps.typed_edges_supplier is not None:
         dispatcher.register_handler("traverse", _make_traverse_handler(deps.typed_edges_supplier))
         wired.add("traverse")
+
+    if deps.claims_for_doc_supplier is not None and deps.nli_scorer is not None:
+        dispatcher.register_handler(
+            "coverage",
+            _make_coverage_handler(
+                claims_for_doc_supplier=deps.claims_for_doc_supplier,
+                nli_scorer=deps.nli_scorer,
+            ),
+        )
+        wired.add("coverage")
+        dispatcher.register_handler(
+            "list_check",
+            _make_list_check_handler(
+                claims_for_doc_supplier=deps.claims_for_doc_supplier,
+                nli_scorer=deps.nli_scorer,
+            ),
+        )
+        wired.add("list_check")
 
     return frozenset(wired)
 
@@ -588,6 +890,7 @@ __all__ = [
     "CalibrationData",
     "ClaimLookup",
     "ClaimRecordLookup",
+    "ClaimsForDocSupplier",
     "ConceptNameLookup",
     "MCPHandlerDeps",
     "TypedEdgesSupplier",

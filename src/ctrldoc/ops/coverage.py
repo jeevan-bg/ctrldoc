@@ -128,19 +128,55 @@ class CoverageConfig:
             )
 
 
+class CoverageAssignment(BaseModel):
+    """Per-target transport-plan breakdown — feeds richer report surfaces.
+
+    One row per target claim, aligned by position with `verdicts`. The
+    handler layer (MCP `coverage`, the CLI `coverage` passthrough) lifts
+    these rows into the §7 `CoverageVerdict` shape. The fields are kept
+    intentionally minimal — they are the transport-plan readout the §6.6
+    reduction produces, nothing more.
+
+    * `aligned_source_indices` lists every real-source row that routed
+      non-zero mass into this target column, sorted by descending mass
+      (lex tiebreak on the source index for determinism). Empty for
+      `Missing` targets — the slack column owned the column's mass.
+    * `transport_cost` is the cost-weighted mass at this assignment
+      (real-source mass times `(1 - entailment)`) plus the slack mass
+      times `(1 - threshold)`. The slack contribution is the explicit
+      "uncovered" penalty.
+    * `real_mass` and `slack_mass` are the unweighted mass splits at
+      the column — sum to ~1.0 (balanced plan). Callers map them to a
+      calibrated confidence by reading `real_mass` directly (the
+      probability the target is covered by *some* real source) when
+      the verdict is `Covered`; for `Missing`, `slack_mass` is the
+      probability the column is uncovered.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    aligned_source_indices: list[int]
+    transport_cost: float
+    real_mass: float
+    slack_mass: float
+
+
 class CoverageResult(BaseModel):
     """Aggregate output of one `coverage` (or `list_check`) call.
 
     `verdicts` aligns by position with the target-claim list the caller
     passed. `scorer_calls` is the bookkeeping count the §6.6 cost
     contract is asserted against in tests; it equals
-    `|sources| * |targets|` for a non-empty input.
+    `|sources| * |targets|` for a non-empty input. `assignments` is the
+    per-target transport-plan readout — empty list when `verdicts` is
+    empty.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     verdicts: list[CoverageVerdictLiteral]
     scorer_calls: int
+    assignments: list[CoverageAssignment] = []
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +204,21 @@ def coverage(
     source_list = list(source)
 
     if not target_list:
-        return CoverageResult(verdicts=[], scorer_calls=0)
+        return CoverageResult(verdicts=[], scorer_calls=0, assignments=[])
 
     if not source_list:
         return CoverageResult(
             verdicts=["Missing"] * len(target_list),
             scorer_calls=0,
+            assignments=[
+                CoverageAssignment(
+                    aligned_source_indices=[],
+                    transport_cost=1.0 - cfg.entailment_threshold,
+                    real_mass=0.0,
+                    slack_mass=1.0,
+                )
+                for _ in target_list
+            ],
         )
 
     return _solve_via_transport(
@@ -322,15 +367,36 @@ def _solve_via_transport(
     # no clearly dominant source is closer to uncovered than covered.
     slack_row_idx = n_src
     verdicts: list[CoverageVerdictLiteral] = []
+    assignments: list[CoverageAssignment] = []
     for j in range(n_tgt):
         slack_flow = plan.flow[slack_row_idx][j]
-        real_flow = sum(plan.flow[i][j] for i in range(n_src))
-        if slack_flow >= real_flow:
+        # Per-real-source flow into column j; preserve indices so the
+        # handler can map back to its source-claim list.
+        real_flows = [(i, plan.flow[i][j]) for i in range(n_src) if plan.flow[i][j] > 0.0]
+        real_flow_total = sum(f for _, f in real_flows)
+        if slack_flow >= real_flow_total:
             verdicts.append("Missing")
         else:
             verdicts.append("Covered")
+        # Descending mass, lex tiebreak on source index — deterministic
+        # surface order for the rendered report.
+        real_flows.sort(key=lambda pair: (-pair[1], pair[0]))
+        # Cost contribution = sum of real-source mass times per-cell
+        # cost + slack mass times slack cost. Mirrors the inner-product
+        # the transport engine reports as `plan.total_cost` summed
+        # over j.
+        cost = sum(f * (1.0 - entail_matrix[i][j]) for i, f in real_flows)
+        cost += slack_flow * slack_cost
+        assignments.append(
+            CoverageAssignment(
+                aligned_source_indices=[i for i, _ in real_flows],
+                transport_cost=cost,
+                real_mass=real_flow_total,
+                slack_mass=slack_flow,
+            )
+        )
 
-    return CoverageResult(verdicts=verdicts, scorer_calls=scorer_calls)
+    return CoverageResult(verdicts=verdicts, scorer_calls=scorer_calls, assignments=assignments)
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +439,7 @@ def _render_claims(claims: Iterable[ClaimTuple]) -> list[str]:
 __all__ = [
     "COVERAGE_ENTAILMENT_THRESHOLD",
     "COVERAGE_VERDICT_ACCURACY_THRESHOLD",
+    "CoverageAssignment",
     "CoverageConfig",
     "CoverageResult",
     "NLIScorer",
