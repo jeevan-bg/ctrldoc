@@ -478,12 +478,12 @@ def test_emitted_edges_cite_source_and_target_doc_spans() -> None:
     assert out.edges, "expected at least one cross-doc edge from a high-entailment pair"
     for edge in out.edges:
         chunk_ids = {span.chunk_id for span in edge.citations}
-        assert any(
-            cid.startswith("docA") for cid in chunk_ids
-        ), f"edge {edge.type} {edge.src_id}->{edge.dst_id} is missing a docA citation"
-        assert any(
-            cid.startswith("docB") for cid in chunk_ids
-        ), f"edge {edge.type} {edge.src_id}->{edge.dst_id} is missing a docB citation"
+        assert any(cid.startswith("docA") for cid in chunk_ids), (
+            f"edge {edge.type} {edge.src_id}->{edge.dst_id} is missing a docA citation"
+        )
+        assert any(cid.startswith("docB") for cid in chunk_ids), (
+            f"edge {edge.type} {edge.src_id}->{edge.dst_id} is missing a docB citation"
+        )
 
 
 # ---------------------------------------------------------------------------

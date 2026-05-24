@@ -62,9 +62,9 @@ def test_baseline_script_emits_one_json_line(module_name: str, set_name: str) ->
     rc, stdout, stderr = _run_script(module_name)
     assert rc == 0, f"{module_name} exited {rc}; stderr=\n{stderr}"
     lines = [line for line in stdout.splitlines() if line.strip()]
-    assert (
-        len(lines) == 1
-    ), f"{module_name} must print exactly one JSON summary line; got {len(lines)} lines"
+    assert len(lines) == 1, (
+        f"{module_name} must print exactly one JSON summary line; got {len(lines)} lines"
+    )
     payload = json.loads(lines[0])
     assert payload["set_name"] == set_name
     assert isinstance(payload["cases"], int)
@@ -104,14 +104,14 @@ def test_run_v1_smoke_exits_zero_and_summarizes_all_five() -> None:
         cwd=str(REPO_ROOT),
         check=False,
     )
-    assert (
-        proc.returncode == 0
-    ), f"run_v1_smoke.sh exited {proc.returncode}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    assert proc.returncode == 0, (
+        f"run_v1_smoke.sh exited {proc.returncode}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )
     # Every substrate's set_name must appear in the aggregator's output.
     for _module_name, set_name in _BASELINE_MODULES:
-        assert (
-            set_name in proc.stdout
-        ), f"smoke aggregator stdout missing substrate {set_name!r}; got:\n{proc.stdout}"
+        assert set_name in proc.stdout, (
+            f"smoke aggregator stdout missing substrate {set_name!r}; got:\n{proc.stdout}"
+        )
 
 
 def test_run_v1_smoke_fails_when_a_baseline_missing(tmp_path: Path) -> None:

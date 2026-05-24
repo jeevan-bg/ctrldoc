@@ -234,9 +234,9 @@ def test_candidate_budget_holds_at_default_k() -> None:
     n = len(claims)
     max_calls = DEFAULT_K_CANDIDATES * n
     assert out.scorer_calls == len(scorer.calls)
-    assert (
-        out.scorer_calls <= max_calls
-    ), f"scorer called {out.scorer_calls} times for N={n}; budget is {max_calls}"
+    assert out.scorer_calls <= max_calls, (
+        f"scorer called {out.scorer_calls} times for N={n}; budget is {max_calls}"
+    )
     # Also: must beat the quadratic baseline strictly when N > k+1.
     assert out.scorer_calls < n * (n - 1)
 
