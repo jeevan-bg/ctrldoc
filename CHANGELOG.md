@@ -19,6 +19,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.models_v1` — v1 substrate Pydantic models that mirror the
+  v2 storage tables and carry the calibrated-edge graph the
+  universal-transport operations traverse. Exports `Claim`, `Concept`,
+  `TypedEdge`, `Workspace`, `CoverageReport`, `CoverageVerdict`,
+  `CoverageSummary`, and `ProofTrace`, plus the public literal
+  aliases `PolarityLiteral`, `ModalityLiteral`, `PrimitiveTypeLiteral`,
+  `TypedEdgeTypeLiteral`, `EdgeSourceLiteral`, and `VerdictLiteral`.
+  Every model is frozen with `extra='forbid'`; all confidences are
+  unit-interval bounded; `CoverageSummary`'s four rates must form a
+  probability mass (sum to 1.0 ± 1e-6). Lives in its own module so
+  the v0.3 surface in `ctrldoc.models` keeps compiling unchanged
+  through the v1 build-out.
 - `ctrldoc.eval.claim_extraction` — universal-claim-tuple extraction
   eval substrate. Exports `ClaimTuple`, `ClaimExtractor` Protocol,
   `ClaimExtractionEvalRunner`, and `precision_recall_f1`. The
