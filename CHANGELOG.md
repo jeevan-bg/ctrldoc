@@ -19,6 +19,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.ops.transport` — optimal-transport engine on claim-pair
+  edges (SPEC §6.6). `TransportProblem(source_weights, target_weights,
+  cost_matrix)` is the balanced bipartite input shape (validators
+  reject mismatched shape, negative entries, or unbalanced total
+  mass within `1e-9`). Two solvers consume the same shape and emit
+  the same `TransportPlan(flow, total_cost)`: `min_cost_transport`
+  solves the transportation problem exactly via successive shortest
+  paths (Dijkstra with potentials on the residual graph) producing
+  sparse hard-assignment plans with possibly many-to-one transport —
+  the foundation for `coverage` and `list_check`. `sinkhorn(problem,
+  *, epsilon, max_iter, tol)` solves the entropy-regularised variant
+  via Sinkhorn-Knopp matrix scaling on the Gibbs kernel
+  `exp(-cost/epsilon)`, converging when both row and column marginal
+  residuals drop under `tol` simultaneously — the foundation for
+  `compare` and `merge`. Smaller `epsilon` sharpens the Sinkhorn plan
+  toward the exact solution. Pure-Python, stdlib-only (no scipy or
+  numpy dependency), byte-deterministic across runs. Slack mass for
+  `Missing` / `Contradicted` verdicts is the caller's responsibility
+  via explicit dummy claims so the engine itself stays a clean
+  single-purpose primitive. 25 unit cases under `family_determinism`
+  cover validation, exact solver correctness (one-to-one,
+  many-to-one, marginals preserved, zero-weight rows/cols, zero-cost
+  diagonal, off-diagonal optimum, chained split, 3x3 known-optimal,
+  empty problem, inner-product bookkeeping, repeat-run
+  determinism), and Sinkhorn behaviour (marginals preserved,
+  epsilon-shrink convergence to the exact plan, repeat-run
+  determinism, epsilon ≤ 0 rejection, strictly-positive flow at high
+  epsilon, inner-product bookkeeping, tight-tolerance convergence).
 - `ctrldoc.extract.isotonic_calibration` — isotonic regression for the
   §6.5 calibration pipeline. `IsotonicCalibrator.fit(raw_scores,
   correct)` runs the pool-adjacent-violators algorithm against
