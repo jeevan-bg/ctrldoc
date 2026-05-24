@@ -26,6 +26,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   {entailment, contradiction, neutral} and spanning six doc types;
   the runner gates each case on `label_accuracy ≥ 0.85` AND the v1
   release-gate threshold `ECE ≤ 0.05`.
+- `scripts/eval_v1_*.py` — five baseline measurement scripts (one
+  per v1 eval substrate: claim_extraction, cross_doc_coverage,
+  compare, merge, calibration). Each drives a degenerate Protocol
+  stub through the substrate's runner against the shipped JSONL
+  fixture and prints a single-line JSON summary on stdout.
+- `scripts/run_v1_smoke.sh` — sequential aggregator over the five
+  baseline scripts. Exits non-zero if any baseline fails to execute
+  or emit a parseable summary; prints a per-substrate `OK | FAIL`
+  table plus the raw JSON summaries. Intended as a CI wiring check
+  for the v1 eval substrates.
 
 ## [0.3.0] — 2026-05-23
 
