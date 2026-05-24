@@ -14,7 +14,7 @@ from collections.abc import Iterable, Iterator
 from typing import Protocol, runtime_checkable
 
 from ctrldoc.models import Chunk, Entity, Section
-from ctrldoc.models_v1 import Claim, Concept
+from ctrldoc.models_v1 import Claim, Concept, TypedEdge
 from ctrldoc.versioning import IndexVersions
 
 
@@ -65,6 +65,12 @@ class Store(Protocol):
     def add_concepts(self, concepts: Iterable[Concept]) -> None: ...
     def get_concept(self, concept_id: str) -> Concept | None: ...
     def iter_concepts(self) -> Iterator[Concept]: ...
+
+    # --- v2 typed-edge CRUD (§6.3 Galois, §6.5 Tier-2 NLI) ---
+
+    def append_typed_edge(self, edge: TypedEdge) -> None: ...
+    def iter_typed_edges(self) -> Iterator[TypedEdge]: ...
+    def iter_typed_edges_for_doc(self, doc_id: str) -> Iterator[TypedEdge]: ...
 
     # --- destructive ops (§4.7, §8.6 family 13) ---
 

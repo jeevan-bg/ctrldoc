@@ -31,7 +31,7 @@ from pathlib import Path
 from types import TracebackType
 
 from ctrldoc.models import Chunk, Entity, Section, Span
-from ctrldoc.models_v1 import Claim, Concept, Workspace
+from ctrldoc.models_v1 import Claim, Concept, TypedEdge, TypedEdgeTypeLiteral, Workspace
 from ctrldoc.provenance import Provenance, now_iso
 from ctrldoc.versioning import IndexVersions
 
@@ -529,6 +529,59 @@ class SQLiteStore:
         for row in self._conn.execute("SELECT * FROM concepts ORDER BY id"):
             yield _row_to_concept(row)
 
+    # --- v2 typed-edge CRUD (§6.3 Galois, §6.5 Tier-2 NLI) ---
+
+    def append_typed_edge(self, edge: TypedEdge) -> None:
+        """Insert or replace one row, idempotent by (src_id, dst_id, type).
+
+        The composite PRIMARY KEY plus `INSERT OR REPLACE` make
+        re-ingest of the same doc produce no duplicate edge rows — the
+        §4.1 "ingest is idempotent and cacheable" property the
+        within-doc inferer (S-155) depends on.
+        """
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO typed_edges
+                    (src_id, dst_id, type, confidence, raw_score,
+                     citations_json, source, paraphrase_votes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    edge.src_id,
+                    edge.dst_id,
+                    edge.type,
+                    float(edge.confidence),
+                    float(edge.raw_score),
+                    json.dumps([s.model_dump() for s in edge.citations]),
+                    edge.source,
+                    edge.paraphrase_votes,
+                ),
+            )
+
+    def iter_typed_edges(self) -> Iterator[TypedEdge]:
+        """Yield every persisted edge in `(type, src_id, dst_id)` order."""
+        for row in self._conn.execute("SELECT * FROM typed_edges ORDER BY type, src_id, dst_id"):
+            yield _row_to_typed_edge(row)
+
+    def iter_typed_edges_for_doc(self, doc_id: str) -> Iterator[TypedEdge]:
+        """Yield edges whose `src_id` or `dst_id` belongs to `doc_id`.
+
+        Endpoint identity is resolved through the `claims.doc_id`
+        column. A single SQL union over the join produces the result
+        set in a deterministic `(type, src_id, dst_id)` order without
+        materialising the full edge table in Python first.
+        """
+        sql = """
+            SELECT DISTINCT e.*
+            FROM typed_edges AS e
+            JOIN claims AS c ON c.id = e.src_id OR c.id = e.dst_id
+            WHERE c.doc_id = ?
+            ORDER BY e.type, e.src_id, e.dst_id
+        """
+        for row in self._conn.execute(sql, (doc_id,)):
+            yield _row_to_typed_edge(row)
+
     def concepts_for_workspace(self, workspace_id: str) -> Iterator[Concept]:
         """Yield the shared-concept-lattice slice visible to a workspace.
 
@@ -730,6 +783,21 @@ def _row_to_concept(row: sqlite3.Row) -> Concept:
         primitive_type=row["primitive_type"],
         mention_claim_ids=list(json.loads(row["mention_claim_ids_json"])),
         doc_ids=list(json.loads(row["doc_ids_json"])),
+    )
+
+
+def _row_to_typed_edge(row: sqlite3.Row) -> TypedEdge:
+    paraphrase_votes = row["paraphrase_votes"]
+    edge_type: TypedEdgeTypeLiteral = row["type"]  # validated by the model below
+    return TypedEdge(
+        src_id=row["src_id"],
+        dst_id=row["dst_id"],
+        type=edge_type,
+        confidence=float(row["confidence"]),
+        raw_score=float(row["raw_score"]),
+        citations=[Span(**s) for s in json.loads(row["citations_json"])],
+        source=row["source"],
+        paraphrase_votes=int(paraphrase_votes) if paraphrase_votes is not None else None,
     )
 
 

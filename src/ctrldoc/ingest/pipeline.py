@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, NonNegativeInt
 
 from ctrldoc.eval.claim_extraction import ClaimExtractor
 from ctrldoc.extract.claim_persistence import claim_from_tuple
+from ctrldoc.extract.within_doc_edges import WithinDocEdgeInferer
 from ctrldoc.ingest.chunker import DEFAULT_MAX_TOKENS, chunk_sections
 from ctrldoc.ingest.coref import CorefResolver, resolve_sections
 from ctrldoc.ingest.embedder import Embedder
@@ -43,6 +44,7 @@ class IngestStats(BaseModel):
     entities_indexed: NonNegativeInt
     embedded_tokens: NonNegativeInt
     claims_extracted: NonNegativeInt = 0
+    typed_edges_inferred: NonNegativeInt = 0
 
 
 class IncrementalStats(BaseModel):
@@ -72,6 +74,7 @@ def ingest_document(
     bm25_index: BM25Index,
     max_chunk_tokens: int = DEFAULT_MAX_TOKENS,
     claim_extractor: ClaimExtractor | None = None,
+    edge_inferer: WithinDocEdgeInferer | None = None,
     doc_id: str | None = None,
 ) -> IngestStats:
     """Run the full L0 pipeline against `source` and persist into `store`.
@@ -81,6 +84,14 @@ def ingest_document(
     each into a persisted `Claim` (content-hashed id), write through
     `store.append_claim`. Without an extractor the pipeline runs the
     pre-§6.2 path and zero claims land in the store.
+
+    Optional `edge_inferer` runs after claim persistence: a
+    `WithinDocEdgeInferer` reads the just-persisted claims for the
+    doc, runs the §6.3 Galois floor (and the optional §6.5 Tier-2
+    NLI overlay) over every pair, and writes every emitted
+    `TypedEdge` through `store.append_typed_edge`. Without the
+    inferer no typed-edges land. Requires `claim_extractor` to also
+    be set — without persisted claims there is nothing to pair.
 
     `doc_id` is the parent document's logical id used as the
     content-hash prefix for claim identity. Defaults to the source
@@ -117,6 +128,7 @@ def ingest_document(
         bm25_index.add(chunk.id, chunk.text)
 
     claims_extracted = 0
+    typed_edges_inferred = 0
     if claim_extractor is not None:
         effective_doc_id = doc_id if doc_id is not None else Path(source).stem
         claims_extracted = _extract_and_persist_claims(
@@ -125,6 +137,12 @@ def ingest_document(
             store=store,
             doc_id=effective_doc_id,
         )
+        if edge_inferer is not None:
+            typed_edges_inferred = _infer_and_persist_typed_edges(
+                store=store,
+                inferer=edge_inferer,
+                doc_id=effective_doc_id,
+            )
 
     return IngestStats(
         sections_parsed=len(sections),
@@ -132,6 +150,7 @@ def ingest_document(
         entities_indexed=len(entities_by_id),
         embedded_tokens=sum(c.token_count for c in chunks),
         claims_extracted=claims_extracted,
+        typed_edges_inferred=typed_edges_inferred,
     )
 
 
@@ -233,6 +252,29 @@ def ingest_document_incremental(
         chunks_added=chunks_added,
         chunks_removed=chunks_removed,
     )
+
+
+def _infer_and_persist_typed_edges(
+    *,
+    store: Store,
+    inferer: WithinDocEdgeInferer,
+    doc_id: str,
+) -> int:
+    """Run the within-doc inferer over the just-persisted claims for this doc.
+
+    The inferer iterates the store's `iter_claims_for_doc(doc_id)` so
+    the input is always a stable snapshot, then persists every emitted
+    `TypedEdge`. Idempotency is enforced at the storage layer (PRIMARY
+    KEY on `(src_id, dst_id, type)`), so a re-ingest of the same doc
+    never produces duplicate rows.
+    """
+    claims = list(store.iter_claims_for_doc(doc_id))
+    if len(claims) < 2:
+        return 0
+    edges = inferer.infer(claims)
+    for edge in edges:
+        store.append_typed_edge(edge)
+    return len(edges)
 
 
 def _extract_and_persist_claims(
