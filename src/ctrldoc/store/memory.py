@@ -28,6 +28,9 @@ class InMemoryStore:
         # Typed-edge rows keyed on the §8 PRIMARY KEY (src_id, dst_id, type).
         # `INSERT OR REPLACE` semantics map to plain dict assignment.
         self._typed_edges: dict[tuple[str, str, str], TypedEdge] = {}
+        # Cross-doc edge rows keyed on the §8 PRIMARY KEY
+        # (workspace_id, src_claim_id, dst_claim_id, type) per §6.7.
+        self._cross_doc_edges: dict[tuple[str, str, str, str], TypedEdge] = {}
 
     @property
     def versions(self) -> IndexVersions:
@@ -153,6 +156,26 @@ class InMemoryStore:
         for edge in self.iter_typed_edges():
             if edge.src_id in doc_claim_ids or edge.dst_id in doc_claim_ids:
                 yield edge
+
+    # --- v2 cross-doc edge CRUD (§6.7 workspace bridge) ---
+
+    def append_cross_doc_edge(self, *, workspace_id: str, edge: TypedEdge) -> None:
+        """Insert or replace one cross-doc edge scoped to `workspace_id`.
+
+        Idempotent on the composite key
+        `(workspace_id, src_id, dst_id, type)` per §6.7's lazy + cached
+        contract.
+        """
+        self._cross_doc_edges[(workspace_id, edge.src_id, edge.dst_id, edge.type)] = edge
+
+    def iter_cross_doc_edges_for_workspace(self, workspace_id: str) -> Iterator[TypedEdge]:
+        """Yield workspace-scoped cross-doc edges in `(type, src, dst)` order."""
+        keys = sorted(
+            (k for k in self._cross_doc_edges if k[0] == workspace_id),
+            key=lambda k: (k[3], k[1], k[2]),
+        )
+        for key in keys:
+            yield self._cross_doc_edges[key]
 
     # --- destructive ops ---
 
