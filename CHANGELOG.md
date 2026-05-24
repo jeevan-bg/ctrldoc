@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Storage schema v2** (SPEC §8). `SQLiteStore` now provisions six
+  new tables — `claims`, `concepts`, `typed_edges`, `workspaces`,
+  `cross_doc_edges`, `verdict_ledger` — through the same idempotent
+  `_init_schema` block as the v0.3 chunk/section/entity layout.
+  `SCHEMA_VERSION` is bumped from `"0.1.0"` to `"0.2.0"`, so any
+  index written by a v0.3 install will refuse to open under v1 and
+  must be re-ingested. `clear_all` now truncates the new tables as
+  part of its destructive reset.
+
 ### Added
 
 - `ctrldoc.eval.claim_extraction` — universal-claim-tuple extraction
