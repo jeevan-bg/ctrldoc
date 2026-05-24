@@ -19,6 +19,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.tier2_nli` — Tier-2 NLI edge inferer per SPEC
+  §6.5. `Tier2NLIEdgeInferer` consumes a list of universal `ClaimTuple`
+  rows (the Tier-2 SVO extractor's output) and emits `TypedEdge` rows
+  of type `entails` / `contradicts` between pairs whose top-label
+  NLI confidence crosses the default 0.70 threshold. The cost
+  contract is the §6.5 candidate-retrieval bound: at most
+  `k_candidates * N` ordered pairs reach the backend, where the
+  default `k = 5` matches the spec's `5N` envelope; quadratic
+  enumeration is explicitly forbidden. The candidate ranker is a
+  token-overlap Jaccard over a lower-cased word-token bag, with
+  ties broken on the lexicographic claim id for full determinism.
+  Edges carry `source="nli"`, the raw top-label probability as
+  both `confidence` and `raw_score` (the upcoming isotonic-
+  calibration layer fits against the latter), and synthetic
+  premise / hypothesis citation spans whose `chunk_id` is prefixed
+  `tier2-nli:` so the trace renderer can surface the provenance.
+  `render_claim_text` lifts a `ClaimTuple` into a natural-language
+  surface with polarity-aware copula flips (`is` → `is not`, etc.)
+  and trailing qualifier; `claim_id` is content-hashed over the
+  six logical fields for stable cross-run identity.
 - `ctrldoc.extract.tier2` + `ctrldoc.extract.tier2_spacy` — Tier-2
   SVO claim-tuple extractor per SPEC §6.4. The pure-Python helpers in
   `tier2` carry the modality lexicon (`must` / `shall` / `should` /
