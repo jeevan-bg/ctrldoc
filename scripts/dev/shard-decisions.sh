@@ -58,12 +58,18 @@ function slug(s,    t) {
   sub(/^-/, "", t); sub(/-$/, "", t)
   return t
 }
-function flush() {
+function flush(   last) {
   if (current_id != "" && n > 0) {
+    # Strip trailing blank lines from the buffer so the written shard
+    # ends with exactly one newline. End-of-file-fixer would otherwise
+    # rewrite the file and put the shard hash check into a fight with
+    # the trailing-whitespace gate.
+    last = n
+    while (last > 0 && buf[last] ~ /^[ \t]*$/) last--
     fname = out_dir "/" current_id ".md"
     printf "---\nid: %s\nsource: docs/DECISIONS.md\nsource_line: %d\nheader_level: %d\n---\n\n", \
       current_id, current_start, current_level > fname
-    for (i = 1; i <= n; i++) print buf[i] >> fname
+    for (i = 1; i <= last; i++) print buf[i] >> fname
     close(fname)
   }
 }

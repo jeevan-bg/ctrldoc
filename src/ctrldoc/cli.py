@@ -107,6 +107,17 @@ ledger_app = typer.Typer(
 )
 app.add_typer(ledger_app, name="ledger")
 
+mcp_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help=(
+        "Model Context Protocol server: expose the §6.10 tool surface "
+        "over stdio so any MCP-compatible host (Claude Desktop, Claude "
+        "CLI, third-party) can drive the substrate."
+    ),
+)
+app.add_typer(mcp_app, name="mcp")
+
 _WORKSPACE_DB_FILENAME = "workspaces.db"
 _LEDGER_DB_FILENAME = "ledger.db"
 
@@ -1686,6 +1697,26 @@ def ledger_replay(
     }
     markdown = _render_ledger_replay_markdown(payload=payload)
     _emit_output(state, markdown=markdown, payload=payload)
+
+
+@mcp_app.command("serve")
+def mcp_serve(
+    _ctx: typer.Context,
+) -> None:
+    """Run the MCP server over stdio (JSON-RPC 2.0, line-framed envelopes).
+
+    Reads requests from stdin and writes responses to stdout. The L4
+    tool surface (§6.10) is exposed verbatim — no handlers are wired
+    here, so every `tools/call` returns an `isError=true` envelope
+    until downstream engines plug their handlers into the dispatcher.
+    Hosts can still drive `initialize` and `tools/list` to discover
+    the catalogue.
+    """
+    from ctrldoc.mcp.server import serve_stdio
+
+    # Default `MCPServer()` constructs its own `default_dispatcher()`;
+    # no per-call state is needed for the protocol surface.
+    serve_stdio()
 
 
 def main() -> None:
