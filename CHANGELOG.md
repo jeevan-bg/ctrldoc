@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `ctrldoc.retrieval.graph_walk` — personalized PageRank over typed
+  claim-graph edges (SPEC §6.9). `EDGE_TYPE_WEIGHTS` encodes the §6.9
+  three-tier ladder verbatim: `depends_on` / `refines` /
+  `prerequisite_of` (high), `is_a` / `part_of` (medium), `related_to`
+  (low). Other typed-edge types in the alphabet are silently skipped
+  by the walker because the spec scopes L2 retrieval to the listed
+  subset. `personalized_pagerank(edges, seeds, alpha, max_iter, tol)`
+  computes the stationary distribution via power iteration; per-step
+  walk probability over outgoing edges is proportional to
+  `EDGE_TYPE_WEIGHTS[edge.type] * edge.confidence`. Dangling nodes
+  teleport their mass to the seed distribution so probability is
+  conserved. Defaults: `alpha = 0.85` (classic PageRank persistence),
+  `max_iter = 50`, `tol = 1e-8` L1 distance; convergence is fast on
+  the sparse claim graph. Pure-Python (no numpy / scipy),
+  byte-deterministic across runs because the adjacency is built into
+  a sorted-key dict. `GraphWalkRetriever(edges, concept_to_chunks,
+  config)` wraps the primitive with a harvest stage: top-N concepts
+  by stationary probability map to their anchored chunk ids, deduped
+  in concept-rank order then within-concept input order, ready for
+  the existing dense ⊕ BM25 ⊕ entity fusion step. `GraphWalkConfig`
+  pins `alpha` / `max_iter` / `tol` / `harvest_k` (default 10).
+  `recall_at_k(retrieved, gold, k)` is a stdlib-only helper that
+  returns the §6.9 release-gate metric. `PPR_RECALL_LIFT_THRESHOLD =
+  0.10` names the spec's "≥ 10 % recall lift on multi-hop queries"
+  gate; the test suite proves it end-to-end on a 2-hop synthetic
+  topology where gold concepts are reachable from the query seed
+  only through intermediate concepts (seed-only baseline recovers
+  zero gold; the walker recovers all three).
+
 ### Changed
 
 - **Storage schema v2** (SPEC §8). `SQLiteStore` now provisions six
