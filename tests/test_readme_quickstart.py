@@ -151,19 +151,39 @@ def test_readme_quickstart_extraction_recovers_each_step(repo_root: Path) -> Non
 def test_every_quickstart_command_runs_successfully(
     repo_root: Path,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run every ctrldoc invocation parsed from the Quickstart block.
 
     `--output-dir ./runs` is rewritten to a temp dir so the test
-    doesn't pollute the repo. Any non-zero exit code fails — keeping
-    the README honest as the CLI surface evolves.
+    doesn't pollute the repo. Commands that resolve their on-disk
+    state through the default `paths.runs_path = ./runs` (notably
+    every `workspace` sub-command, which writes
+    `<runs_path>/workspaces.db`) are isolated by ``chdir``-ing into
+    ``tmp_path`` for the duration of the loop — otherwise repeat
+    runs would cross-contaminate the repo's own ``./runs`` tree.
+    Any non-zero exit code fails — keeping the README honest as the
+    CLI surface evolves.
     """
     commands = _extract_quickstart_commands(_readme_text(repo_root))
     out_dir = tmp_path / "runs"
+    monkeypatch.chdir(tmp_path)
+
+    def _rewrite_arg(arg: str) -> str:
+        # `./runs` → temp dir so the test is hermetic.
+        if arg == "./runs":
+            return str(out_dir)
+        # Repo-relative paths the README uses for bundled fixtures
+        # (e.g. `tests/fixtures/...`) need to be rooted at the repo
+        # because we ``chdir`` into ``tmp_path`` for workspace state
+        # isolation.
+        candidate = repo_root / arg
+        if "/" in arg and not arg.startswith("/") and candidate.exists():
+            return str(candidate)
+        return arg
+
     for args in commands:
-        # Redirect any `--output-dir ./runs` to the tmp_path so the
-        # test is hermetic.
-        rewritten = [str(out_dir) if arg == "./runs" else arg for arg in args]
+        rewritten = [_rewrite_arg(arg) for arg in args]
         # Skip --help since CliRunner returns exit_code=0 but reads
         # from a different code path; we test it separately.
         if "--help" in rewritten:
@@ -171,9 +191,9 @@ def test_every_quickstart_command_runs_successfully(
             assert result.exit_code == 0
             continue
         result = runner.invoke(app, rewritten)
-        assert result.exit_code == 0, (
-            f"command {rewritten} failed with code {result.exit_code}\nstderr: {result.stderr}"
-        )
+        assert (
+            result.exit_code == 0
+        ), f"command {rewritten} failed with code {result.exit_code}\nstderr: {result.stderr}"
 
 
 # --- README content sanity ---
@@ -191,17 +211,32 @@ def test_readme_references_synthetic_gold_doc_path(repo_root: Path) -> None:
     assert "tests/fixtures/synthetic/gold_doc.md" in readme
 
 
-def test_readme_lists_every_uc_playbook(repo_root: Path) -> None:
+def test_readme_lists_every_v1_substrate_operation(repo_root: Path) -> None:
+    """README must enumerate the v1 universal-substrate surface.
+
+    The v0.3 per-playbook table was replaced at the v1.0.0 release;
+    the v1 CLI surface is the union of the v0.3 commands (still
+    preserved) plus the new universal-substrate operations.
+    """
     readme = _readme_text(repo_root)
     for marker in (
+        # v0.3 commands kept verbatim:
+        "ingest",
         "qa",
-        "coverage_audit",
-        "quality_audit",
-        "analytical_review",
-        "anomaly_scan",
-        "relation_map",
+        "scan",
+        "map",
+        "audit",
+        "review",
+        # v1 additions:
+        "workspace",
+        "coverage",
+        "compare",
+        "merge",
+        "list-check",
+        "ledger",
+        "mcp",
     ):
-        assert marker in readme, f"README missing reference to playbook {marker!r}"
+        assert marker in readme, f"README missing reference to operation {marker!r}"
 
 
 @pytest.fixture

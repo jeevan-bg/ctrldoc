@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ctrldoc"
-version = "0.3.0"
-description = "Local-first substrate for citation-grounded analysis of large documents"
+version = "1.0.0"
+description = "Universal claim-graph substrate for citation-grounded, calibrated multi-document analysis"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
