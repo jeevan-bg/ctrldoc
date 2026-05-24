@@ -40,7 +40,7 @@ from ctrldoc.config import (
     ModelsConfig,
     PathsConfig,
 )
-from ctrldoc.ingest.parser import MarkdownParser
+from ctrldoc.ingest.parser_dispatch import get_parser
 from ctrldoc.ingest.pipeline import IngestStats, ingest_document
 from ctrldoc.ops.scan import (
     AnomalyScanPlaybook,
@@ -201,6 +201,18 @@ def _doc_hash_for(text: str) -> str:
     docs in a per-user run dir won't collide.
     """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _doc_hash_for_path(path: Path) -> str:
+    """16-char hex prefix of sha256 over the source's raw bytes.
+
+    Hashing bytes (not decoded text) lets a single helper cover both
+    text sources (`.md`/`.markdown`/`.txt`) and binary sources
+    (`.pdf`) without forcing every caller to know the parser
+    routing. Content-derived ids stay byte-deterministic across
+    re-ingest of the same source path.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
 def _per_doc_index_dir(config: Config, doc_hash: str) -> Path:
@@ -418,8 +430,7 @@ def ingest(
             update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
         )
 
-    text = input_path.read_text(encoding="utf-8")
-    doc_hash = _doc_hash_for(text)
+    doc_hash = _doc_hash_for_path(input_path)
     effective_doc_id = doc_id or input_path.stem
 
     bundle = build_bundle(config=config, profile=state.profile)
@@ -429,7 +440,7 @@ def ingest(
         doc_hash=doc_hash,
     )
 
-    parser = MarkdownParser()  # PDF / code routing will plug in later.
+    parser = get_parser(input_path)
     stats = ingest_document(
         source=input_path,
         parser=parser,
@@ -586,8 +597,7 @@ def qa(
             update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
         )
 
-    text = target_path.read_text(encoding="utf-8")
-    doc_hash = _doc_hash_for(text)
+    doc_hash = _doc_hash_for_path(target_path)
     effective_doc_id = doc_id or target_path.stem
 
     bundle = build_bundle(config=config, profile=state.profile)
@@ -598,7 +608,7 @@ def qa(
     )
     ingest_document(
         source=target_path,
-        parser=MarkdownParser(),
+        parser=get_parser(target_path),
         coref=bundle.coref,
         ner=bundle.ner,
         ner_labels=_DEFAULT_NER_LABELS,
@@ -757,8 +767,7 @@ def audit(
             update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
         )
 
-    target_text = target_path.read_text(encoding="utf-8")
-    doc_hash = _doc_hash_for(target_text)
+    doc_hash = _doc_hash_for_path(target_path)
     effective_doc_id = doc_id or target_path.stem
 
     bundle = build_bundle(config=config, profile=state.profile)
@@ -769,7 +778,7 @@ def audit(
     )
     ingest_document(
         source=target_path,
-        parser=MarkdownParser(),
+        parser=get_parser(target_path),
         coref=bundle.coref,
         ner=bundle.ner,
         ner_labels=_DEFAULT_NER_LABELS,
@@ -949,8 +958,7 @@ def review(
             update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
         )
 
-    text = target_path.read_text(encoding="utf-8")
-    doc_hash = _doc_hash_for(text)
+    doc_hash = _doc_hash_for_path(target_path)
     effective_doc_id = doc_id or target_path.stem
 
     bundle = build_bundle(config=config, profile=state.profile)
@@ -961,7 +969,7 @@ def review(
     )
     ingest_document(
         source=target_path,
-        parser=MarkdownParser(),
+        parser=get_parser(target_path),
         coref=bundle.coref,
         ner=bundle.ner,
         ner_labels=_DEFAULT_NER_LABELS,
@@ -1093,8 +1101,7 @@ def scan(
             update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
         )
 
-    text = target_path.read_text(encoding="utf-8")
-    doc_hash = _doc_hash_for(text)
+    doc_hash = _doc_hash_for_path(target_path)
     effective_doc_id = doc_id or target_path.stem
 
     bundle = build_bundle(config=config, profile=state.profile)
@@ -1105,7 +1112,7 @@ def scan(
     )
     ingest_document(
         source=target_path,
-        parser=MarkdownParser(),
+        parser=get_parser(target_path),
         coref=bundle.coref,
         ner=bundle.ner,
         ner_labels=_DEFAULT_NER_LABELS,
@@ -1230,8 +1237,7 @@ def map_(
             update={"paths": config.paths.model_copy(update={"runs_path": output_dir})}
         )
 
-    text = target_path.read_text(encoding="utf-8")
-    doc_hash = _doc_hash_for(text)
+    doc_hash = _doc_hash_for_path(target_path)
     effective_doc_id = doc_id or target_path.stem
 
     bundle = build_bundle(config=config, profile=state.profile)
@@ -1242,7 +1248,7 @@ def map_(
     )
     ingest_document(
         source=target_path,
-        parser=MarkdownParser(),
+        parser=get_parser(target_path),
         coref=bundle.coref,
         ner=bundle.ner,
         ner_labels=_DEFAULT_NER_LABELS,
