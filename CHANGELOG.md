@@ -19,6 +19,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.tier1` — deterministic claim-graph floor per SPEC
+  §6.4. Four heuristic pattern families compose in a single pass:
+  Hearst lexico-syntactic patterns (`X such as Y`, `X including Y`,
+  `X is a Y`) emit `example_of` / `is_a` edges; heading-tree
+  containment over `Section.parent_id` emits `part_of` edges;
+  sliding-window PMI over chunk tokens (configurable window,
+  min-count, log2 threshold) emits `related_to` edges; lexical-
+  identity coref over repeated proper-noun-ish surface forms emits
+  `equivalent_to` self-edges. Public surface: `extract_tier1`,
+  `Tier1Mention`, `Tier1Concept`, `Tier1Edge`, `Tier1Extraction`,
+  `Tier1Config`, `HEURISTIC_CONFIDENCE` (the §6.5 fixed prior, 0.9).
+  Every edge cites its producing span; concept ids are content-hashed
+  on the canonical surface form so identical input bytes produce
+  byte-identical output across runs.
 - `ctrldoc.models_v1` — v1 substrate Pydantic models that mirror the
   v2 storage tables and carry the calibrated-edge graph the
   universal-transport operations traverse. Exports `Claim`, `Concept`,
