@@ -24,6 +24,13 @@ cd "$REPO_ROOT"
 
 FAIL=0
 
+# Initialise summary counters so the final echo does not trip `set -u`
+# if a Tier 0 file is absent (e.g. running from a fresh git worktree
+# before .ctrldoc/ is materialised). Per-file blocks below overwrite.
+state_entries=0
+trailing_done=0
+digest_lines=0
+
 # ----- STATE.md slice-log cap (≤ 20 entries) -----
 STATE_FILE=".ctrldoc/STATE.md"
 if [[ -f "$STATE_FILE" ]]; then
