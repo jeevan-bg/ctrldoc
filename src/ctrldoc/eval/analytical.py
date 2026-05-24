@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ctrldoc.eval.harness import EvalResult
 from ctrldoc.models import Finding
-from ctrldoc.playbooks.review import AnalyticalReviewPlaybook
+from ctrldoc.ops.review import AnalyticalReviewPlaybook
 
 WEAKNESS_RECALL_THRESHOLD = 0.80
 

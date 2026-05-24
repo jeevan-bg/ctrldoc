@@ -36,12 +36,12 @@ from ctrldoc.config import (
 )
 from ctrldoc.ingest.parser import MarkdownParser
 from ctrldoc.ingest.pipeline import ingest_document
-from ctrldoc.ops.workspace import WorkspaceManager
-from ctrldoc.playbooks.anomaly import (
+from ctrldoc.ops.scan import (
     AnomalyScanPlaybook,
     EmptySummaryDetector,
     HedgeWordDetector,
 )
+from ctrldoc.ops.workspace import WorkspaceManager
 from ctrldoc.store import Store
 from ctrldoc.store.bm25 import TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore

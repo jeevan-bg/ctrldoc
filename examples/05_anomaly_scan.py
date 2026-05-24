@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 
 from ctrldoc.models import Chunk, Section
-from ctrldoc.playbooks.anomaly import (
+from ctrldoc.ops.scan import (
     AnomalyScanPlaybook,
     EmptySummaryDetector,
     HedgeWordDetector,

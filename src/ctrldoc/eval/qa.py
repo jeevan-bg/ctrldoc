@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel, ConfigDict
 
 from ctrldoc.eval.harness import EvalResult
-from ctrldoc.playbooks.qa import QAPlaybook
+from ctrldoc.ops.qa import QAPlaybook
 
 CITATION_PRECISION_THRESHOLD = 0.95
 REFUSAL_ACCURACY_THRESHOLD = 0.90

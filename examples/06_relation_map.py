@@ -20,7 +20,7 @@ import json
 from dataclasses import dataclass
 
 from ctrldoc.models import EvidencePack, Span
-from ctrldoc.playbooks.relations import (
+from ctrldoc.ops.map import (
     Concept,
     RelationClassification,
     RelationMapPlaybook,

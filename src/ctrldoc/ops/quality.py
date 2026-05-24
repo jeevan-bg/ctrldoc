@@ -22,7 +22,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
-from ctrldoc.playbooks.coverage import (
+from ctrldoc.ops.audit import (
     ChecklistItem,
     CoverageAuditPlaybook,
     CoverageReport,

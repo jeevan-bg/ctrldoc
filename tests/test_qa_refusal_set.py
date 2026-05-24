@@ -47,9 +47,9 @@ def test_every_case_is_marked_should_refuse() -> None:
 def test_every_case_has_empty_gold_chunk_ids() -> None:
     """Refusal cases never carry gold citations — there's nothing to cite."""
     for case in _cases():
-        assert case.gold_chunk_ids == [], (
-            f"case {case.id!r} has gold chunk ids but is a refusal case"
-        )
+        assert (
+            case.gold_chunk_ids == []
+        ), f"case {case.id!r} has gold chunk ids but is a refusal case"
 
 
 def test_case_ids_are_unique() -> None:
@@ -85,9 +85,9 @@ def test_refusal_set_covers_diverse_axes() -> None:
     for case in _cases():
         all_tags.update(case.tags)
     non_marker_tags = {tag for tag in all_tags if tag != "out-of-doc"}
-    assert len(non_marker_tags) >= 10, (
-        f"refusal set covers only {len(non_marker_tags)} axes: {sorted(non_marker_tags)}"
-    )
+    assert (
+        len(non_marker_tags) >= 10
+    ), f"refusal set covers only {len(non_marker_tags)} axes: {sorted(non_marker_tags)}"
 
 
 # --- end-to-end through the harness ---
@@ -99,7 +99,7 @@ class _AlwaysRefuseRunner:
 
     def run_case(self, case: QAEvalCase):  # type: ignore[no-untyped-def]
         from ctrldoc.eval.qa import QAEvalRunner
-        from ctrldoc.playbooks.qa import AnswerReport
+        from ctrldoc.ops.qa import AnswerReport
 
         # Build an AnswerReport that always carries a single unverified
         # claim — i.e. the playbook tried to answer but the verifier
@@ -148,7 +148,7 @@ def test_refusal_set_fails_threshold_with_a_fabricating_playbook() -> None:
         def run_case(self, case: QAEvalCase):  # type: ignore[no-untyped-def]
             from ctrldoc.eval.qa import QAEvalRunner
             from ctrldoc.models import Span
-            from ctrldoc.playbooks.qa import AnswerReport
+            from ctrldoc.ops.qa import AnswerReport
 
             # Pretend the playbook fabricates a confident answer on every
             # case — every refusal case should now show 0.0 accuracy.

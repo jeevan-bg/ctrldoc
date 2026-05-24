@@ -36,13 +36,13 @@ from ctrldoc.config import Config
 from ctrldoc.ingest.parser import MarkdownParser
 from ctrldoc.ingest.pipeline import ingest_document
 from ctrldoc.models import Finding, Span
-from ctrldoc.orch.task import StatelessTaskRunner
-from ctrldoc.playbooks.review import (
+from ctrldoc.ops.review import (
     Lens,
     LensSweeper,
     ReviewNarrative,
     ReviewReport,
 )
+from ctrldoc.orch.task import StatelessTaskRunner
 from ctrldoc.store.bm25 import TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore
 from ctrldoc.store.vectors import InMemoryVectorIndex

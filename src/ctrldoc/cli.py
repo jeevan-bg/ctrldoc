@@ -42,7 +42,7 @@ from ctrldoc.config import (
 )
 from ctrldoc.ingest.parser import MarkdownParser
 from ctrldoc.ingest.pipeline import IngestStats, ingest_document
-from ctrldoc.playbooks.anomaly import (
+from ctrldoc.ops.scan import (
     AnomalyScanPlaybook,
     EmptySummaryDetector,
     HedgeWordDetector,
@@ -564,8 +564,8 @@ def qa(
     )
     from ctrldoc.cli_audit import BundleRetriever
     from ctrldoc.cli_qa import VerifierRetriever, render_qa_markdown
+    from ctrldoc.ops.qa import QAPlaybook
     from ctrldoc.orch.task import StatelessTaskRunner
-    from ctrldoc.playbooks.qa import QAPlaybook
     from ctrldoc.verify.claim_verifier import ClaimVerifier
 
     state: CliState = ctx.obj
@@ -738,8 +738,8 @@ def audit(
         render_coverage_markdown,
     )
     from ctrldoc.ingest.pipeline import ingest_document
+    from ctrldoc.ops.audit import CoverageAuditPlaybook
     from ctrldoc.orch.task import StatelessTaskRunner
-    from ctrldoc.playbooks.coverage import CoverageAuditPlaybook
 
     state: CliState = ctx.obj
     _require_input_path(checklist_path)
@@ -815,8 +815,8 @@ def audit(
     # import it so the fallback can emit a typed instance when a single
     # Ollama call fails to parse. Without this fallback the whole audit
     # aborts on the first bad model response.
+    from ctrldoc.ops.audit import _BatchedVerdict
     from ctrldoc.orch.batch import BatchItem as _BatchItem
-    from ctrldoc.playbooks.coverage import _BatchedVerdict
 
     def _audit_fallback(item: _BatchItem, exc: Exception) -> _BatchedVerdict:
         del item, exc  # documented; surfaced in result.json via `Ambiguous`
@@ -924,12 +924,12 @@ def review(
     )
     from ctrldoc.cli_audit import BundleRetriever
     from ctrldoc.cli_review import LLMLensSweeper, render_review_markdown
-    from ctrldoc.orch.synthesis import SynthesisRunner
-    from ctrldoc.orch.task import StatelessTaskRunner
-    from ctrldoc.playbooks.review import (
+    from ctrldoc.ops.review import (
         AnalyticalReviewPlaybook,
         HeuristicLensGenerator,
     )
+    from ctrldoc.orch.synthesis import SynthesisRunner
+    from ctrldoc.orch.task import StatelessTaskRunner
 
     state: CliState = ctx.obj
     if not doc_type.strip():
@@ -1209,8 +1209,8 @@ def map_(
         StoreEntityConceptExtractor,
         render_map_markdown,
     )
+    from ctrldoc.ops.map import RelationMapPlaybook
     from ctrldoc.orch.task import StatelessTaskRunner
-    from ctrldoc.playbooks.relations import RelationMapPlaybook
 
     state: CliState = ctx.obj
     _require_input_path(target_path)

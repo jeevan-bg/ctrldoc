@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ctrldoc.eval.harness import EvalResult
 from ctrldoc.models import Chunk, Finding, Section
-from ctrldoc.playbooks.anomaly import AnomalyScanPlaybook, Detector
+from ctrldoc.ops.scan import AnomalyScanPlaybook, Detector
 from ctrldoc.store.memory import InMemoryStore
 
 TRIAGE_PRECISION_THRESHOLD = 0.60

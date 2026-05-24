@@ -19,7 +19,7 @@ import pytest
 from pydantic import ValidationError
 
 from ctrldoc.models import Chunk, Finding, Section, Span
-from ctrldoc.playbooks.anomaly import (
+from ctrldoc.ops.scan import (
     AnomalyQueue,
     AnomalyScanPlaybook,
     Detector,

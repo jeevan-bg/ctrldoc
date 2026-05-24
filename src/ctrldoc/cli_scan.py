@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ctrldoc.models import Finding, SeverityLiteral
-from ctrldoc.playbooks.anomaly import AnomalyQueue
+from ctrldoc.ops.scan import AnomalyQueue
 
 _SEVERITY_ORDER: tuple[SeverityLiteral, ...] = ("critical", "warn", "info")
 

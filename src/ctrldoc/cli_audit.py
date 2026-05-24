@@ -34,9 +34,9 @@ from pydantic import BaseModel
 
 from ctrldoc.backends import BackendBundle
 from ctrldoc.models import EvidencePack, Verdict
+from ctrldoc.ops.audit import ChecklistItem, CoverageReport
 from ctrldoc.orch.batch import BatchedTaskInput, BatchItem
 from ctrldoc.orch.task import StatelessTaskRunner, TaskInput, TaskOutputError
-from ctrldoc.playbooks.coverage import ChecklistItem, CoverageReport
 from ctrldoc.retrieval.dsl import render_plan_dsl
 from ctrldoc.retrieval.evidence import build_evidence_pack
 from ctrldoc.retrieval.executor import PlanExecutor

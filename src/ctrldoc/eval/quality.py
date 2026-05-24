@@ -18,7 +18,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel, ConfigDict, Field
 
 from ctrldoc.eval.harness import EvalResult
-from ctrldoc.playbooks.quality import CriteriaGenerator
+from ctrldoc.ops.quality import CriteriaGenerator
 
 CRITERIA_COVERAGE_THRESHOLD = 0.85
 DEFAULT_MATCH_THRESHOLD = 0.5

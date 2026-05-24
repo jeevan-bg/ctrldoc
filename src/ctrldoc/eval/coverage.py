@@ -19,11 +19,11 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.eval.harness import EvalResult
 from ctrldoc.models import EvidencePack, Span
-from ctrldoc.orch.batch import BatchedTaskRunner
-from ctrldoc.playbooks.coverage import (
+from ctrldoc.ops.audit import (
     ChecklistItem,
     CoverageAuditPlaybook,
 )
+from ctrldoc.orch.batch import BatchedTaskRunner
 
 VERDICT_ACCURACY_THRESHOLD = 0.90
 

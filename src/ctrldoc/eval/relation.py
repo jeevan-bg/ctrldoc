@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from ctrldoc.eval.harness import EvalResult
 from ctrldoc.models import EvidencePack, RelationTypeLiteral, Span
-from ctrldoc.playbooks.relations import (
+from ctrldoc.ops.map import (
     Concept,
     RelationClassifier,
     RelationMapPlaybook,

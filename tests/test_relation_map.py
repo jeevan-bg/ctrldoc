@@ -19,7 +19,7 @@ import pytest
 from pydantic import ValidationError
 
 from ctrldoc.models import EvidencePack, Span
-from ctrldoc.playbooks.relations import (
+from ctrldoc.ops.map import (
     Concept,
     ConceptExtractor,
     CoOccurrenceRetriever,
@@ -203,7 +203,7 @@ def test_upper_triangle_iteration_no_self_pairs_no_duplicates() -> None:
     # M * (M-1) / 2 = 10 pairs for M=5.
     assert len(pairs) == 10
     # All pairs are unique and ordered with i < j.
-    assert len(pairs) == len({(a, b) for a, b in pairs})
+    assert len(pairs) == len(set(pairs))
     for a, b in pairs:
         assert a < b
 

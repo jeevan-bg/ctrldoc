@@ -23,7 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ctrldoc.cli_audit import BundleRetriever
-from ctrldoc.playbooks.qa import AnswerReport
+from ctrldoc.ops.qa import AnswerReport
 from ctrldoc.verify.claim_verifier import (
     RetrievalDepth,
     RetrievedEvidence,

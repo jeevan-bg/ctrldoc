@@ -38,12 +38,12 @@ from ctrldoc.config import Config
 from ctrldoc.ingest.parser import MarkdownParser
 from ctrldoc.ingest.pipeline import ingest_document
 from ctrldoc.models import EvidencePack, Span, Verdict
-from ctrldoc.playbooks.coverage import (
+from ctrldoc.ops.audit import (
     ChecklistItem,
     CoverageReport,
     CoverageRetriever,
 )
-from ctrldoc.playbooks.qa import QARetriever
+from ctrldoc.ops.qa import QARetriever
 from ctrldoc.store.bm25 import TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore
 from ctrldoc.store.vectors import InMemoryVectorIndex

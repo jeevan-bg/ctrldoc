@@ -42,12 +42,12 @@ from ctrldoc.cli_map import (
 )
 from ctrldoc.config import Config
 from ctrldoc.models import Entity, EvidencePack, RelationEdge, Span
-from ctrldoc.orch.task import StatelessTaskRunner
-from ctrldoc.playbooks.relations import (
+from ctrldoc.ops.map import (
     Concept,
     CoOccurrenceRetriever,
     RelationGraph,
 )
+from ctrldoc.orch.task import StatelessTaskRunner
 from ctrldoc.store.bm25 import TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore
 from ctrldoc.store.vectors import InMemoryVectorIndex

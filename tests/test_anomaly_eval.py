@@ -27,7 +27,7 @@ from ctrldoc.eval.anomaly import (
 )
 from ctrldoc.eval.harness import load_jsonl_cases, run_eval
 from ctrldoc.models import Finding, Span
-from ctrldoc.playbooks.anomaly import (
+from ctrldoc.ops.scan import (
     EmptySummaryDetector,
     HedgeWordDetector,
 )

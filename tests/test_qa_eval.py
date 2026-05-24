@@ -27,8 +27,8 @@ from ctrldoc.eval.qa import (
     citation_precision,
 )
 from ctrldoc.models import Claim, EvidencePack, Span
+from ctrldoc.ops.qa import QAPlaybook
 from ctrldoc.orch.task import StatelessTaskRunner
-from ctrldoc.playbooks.qa import QAPlaybook
 
 # --- stubbed QAPlaybook ---
 

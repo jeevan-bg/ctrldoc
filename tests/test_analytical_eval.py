@@ -27,11 +27,11 @@ from ctrldoc.eval.analytical import (
 )
 from ctrldoc.eval.harness import load_jsonl_cases, run_eval
 from ctrldoc.models import Finding, Span
-from ctrldoc.orch.synthesis import SynthesisRunner
-from ctrldoc.playbooks.review import (
+from ctrldoc.ops.review import (
     AnalyticalReviewPlaybook,
     Lens,
 )
+from ctrldoc.orch.synthesis import SynthesisRunner
 
 ANALYTICAL_EVAL_PATH = Path(__file__).parent / "eval" / "analytical_eval.jsonl"
 
