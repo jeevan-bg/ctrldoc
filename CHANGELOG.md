@@ -19,6 +19,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.isotonic_calibration` — isotonic regression for the
+  §6.5 calibration pipeline. `IsotonicCalibrator.fit(raw_scores,
+  correct)` runs the pool-adjacent-violators algorithm against
+  `(raw_score, binary_correctness)` pairs to learn a monotonic
+  step function; `transform(raw_score)` maps any new raw score to a
+  calibrated probability by linear interpolation between fitted
+  breakpoints, with extrapolation clamping to the nearest endpoint
+  and the output clipped to `[0, 1]`. `CalibratedNLIScorer` wraps any
+  `NLIScorer`: it preserves the inner backend's argmax label,
+  replaces the top-label confidence with the calibrated value, and
+  redistributes the remaining mass over the non-top labels in
+  proportion to their raw ratios (even-split fallback when both
+  non-top raw masses are zero). `fit_per_backend_ece(raw_scores,
+  correct)` is the one-shot release-gate helper: it fits a
+  calibrator on the first half of a labelled set and reports
+  held-out ECE on the second half. `ece_within_release_gate(ece)`
+  names the §6.5 threshold (`CALIBRATION_ECE_THRESHOLD = 0.05`) so
+  callers gate by intent. Stdlib-only — no scipy dependency. A
+  miscalibrated 200-case synthetic backend (raw top-confidence
+  inflated by 0.20) drops from pre-fit ECE 0.10 to post-fit ECE
+  under the 0.05 release gate end-to-end in the test suite.
 - `ctrldoc.extract.paraphrase_voting` — paraphrase voting for the §6.5
   calibration pipeline. `ParaphraseVoter.vote(premise, hypothesis)`
   asks the injected `Paraphraser` for `num_paraphrases` re-wordings of
