@@ -1,0 +1,60 @@
+# Real-doc corpus manifest.
+#
+# Defines a small but realistically-shaped corpus that exercises the v1
+# substrate end-to-end on the heuristic profile (no LLM, no network).
+# Every entry's `type` is one of the §16 doc-type axes:
+#   spec | legal | academic | educational | narrative | spec_vs_impl
+# The spec_vs_impl axis is paired: two entries share the same `pair_id`
+# and each declares `role: spec` or `role: impl`.
+#
+# Notes downstream (e.g. coverage / contradiction tests) may read this
+# file to discover the pair, find files, and look up expected
+# behaviors. The manifest is the oracle; doc-type drift here will
+# fail the smoke tests loudly.
+
+docs:
+  - doc_id: spec_lighthouse
+    type: spec
+    path: spec_lighthouse.md
+    title: "Lighthouse — Edge Telemetry Gateway Specification"
+    summary: "A system spec for an edge telemetry gateway."
+
+  - doc_id: legal_terms
+    type: legal
+    path: legal_terms.md
+    title: "Service Terms — Reference Excerpt"
+    summary: "Hand-built service-terms excerpt; obligations, limits, definitions."
+
+  - doc_id: academic_paper
+    type: academic
+    path: academic_paper.md
+    title: "Sparse Index Compression for Bounded-Memory Retrieval"
+    summary: "Short academic-style writeup with abstract, method, results, limitations."
+
+  - doc_id: educational_guide
+    type: educational
+    path: educational_guide.md
+    title: "A Beginner's Guide to Streaming Joins"
+    summary: "Explanatory tutorial over three streaming-join patterns."
+
+  - doc_id: narrative
+    type: narrative
+    path: narrative.md
+    title: "The Quiet Hour"
+    summary: "Short narrative piece set in a data center at dawn."
+
+  - doc_id: pair_spec_tideline
+    type: spec_vs_impl
+    role: spec
+    pair_id: tideline
+    path: pair_spec.md
+    title: "Tideline — Rate Limiter Specification"
+    summary: "Specification half of the spec-vs-impl pair."
+
+  - doc_id: pair_impl_tideline
+    type: spec_vs_impl
+    role: impl
+    pair_id: tideline
+    path: pair_impl.md
+    title: "Tideline — Implementation Note"
+    summary: "Implementation half; covers most of the spec, contradicts the persistence policy, gaps on SIGHUP reload and refills metric."
