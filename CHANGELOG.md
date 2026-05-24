@@ -19,6 +19,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.paraphrase_voting` — paraphrase voting for the §6.5
+  calibration pipeline. `ParaphraseVoter.vote(premise, hypothesis)`
+  asks the injected `Paraphraser` for `num_paraphrases` re-wordings of
+  the hypothesis (band pinned to the §6.5 `[3, 5]` envelope; default
+  3), scores each `(premise, paraphrase)` pair under the underlying
+  `NLIScorer` exactly once, and aggregates the per-paraphrase argmax
+  labels into a `ParaphraseVote` carrying `majority_label`,
+  `agreement_rate` (fraction of paraphrases voting for the majority
+  label), `mean_top_confidence` (averaged across only the majority
+  paraphrases so dissenters do not drag the score toward the wrong
+  label), `num_paraphrases`, and a complete-shape `label_votes` dict
+  over `{entailment, contradiction, neutral}`. The agreement rate is
+  the confidence proxy the isotonic-regression calibration layer
+  consumes downstream; voting alone does not ship a calibrated
+  probability. `spearman_rank_correlation(xs, ys)` is a stdlib-only
+  helper (no scipy dependency) that computes the rank correlation via
+  Pearson on the average-rank vectors and handles ties via the
+  standard average-rank convention; it returns `0.0` on a constant
+  sequence and raises on length-mismatched or single-pair inputs.
+  `PARAPHRASE_CORRELATION_THRESHOLD = 0.5` pins the §6.5 acceptance
+  gate: across a labelled batch, agreement rate vs binary correctness
+  must clear Spearman rho >= 0.5; a 10-case fixture in the test suite
+  exercises the gate end-to-end on confident-correct and
+  hard-disagreeing paraphrase votes.
 - `ctrldoc.extract.schema_proposer` — L0 schema proposer per SPEC §6.4
   step 2. `max_entropy_sample(chunks, embeddings, *, k)` runs greedy
   farthest-point selection on the embedding cloud: the seed is the
