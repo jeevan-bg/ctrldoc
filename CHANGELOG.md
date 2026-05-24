@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.orch.ledger` — L4 verdict ledger + `ctrldoc ledger {list,
+  show, replay}` CLI (SPEC §6.5, §11). `VerdictLedger` is a thin
+  facade over `SQLiteStore` exposing `append`, `get`, `list_entries`,
+  and `replay`. Persists one row per L4 verdict into the §8
+  `verdict_ledger` table; `LedgerAppendRequest` and `LedgerEntry`
+  mirror the table column-for-column. Append-only contract is
+  enforced at both layers: the facade has no `update` / `delete` /
+  `clear` method, and the storage helpers (`append_ledger_row`,
+  `get_ledger_row`, `iter_ledger_rows`) emit only INSERT and SELECT
+  against the table. `replay(entry_id, replayer)` hands the persisted
+  `inputs` dict verbatim to a caller-supplied `Replayer` callback and
+  scores the result against the §6.5 ±0.02 determinism gate:
+  `REPLAY_TOLERANCE = 0.02`, with a `1e-9` boundary slack so deltas
+  that land exactly on the threshold (e.g. via floating-point
+  arithmetic like `0.40 + 0.02`) still pass. `ReplayOutcome` surfaces
+  the persisted vs. replayed confidences, the raw delta, the
+  tolerance, and a `is_deterministic` flag for the CLI to render the
+  pass/fail verdict alongside the distance. The CLI sub-app routes
+  through `<runs_path>/ledger.db` (one-file-per-substrate, like the
+  workspaces DB): `ctrldoc ledger list [--workspace-id WS]` shows
+  rows in append order; `ctrldoc ledger show <id>` returns the full
+  entry with inputs / output / model versions / timestamp; `ctrldoc
+  ledger replay <id>` runs an identity replayer over the persisted
+  confidence to round-trip the gate plumbing end-to-end. Per-op
+  replayers will plug in via the L4 tool dispatcher when the MCP
+  server lands.
+
 - `ctrldoc.retrieval.graph_walk` — personalized PageRank over typed
   claim-graph edges (SPEC §6.9). `EDGE_TYPE_WEIGHTS` encodes the §6.9
   three-tier ladder verbatim: `depends_on` / `refines` /
