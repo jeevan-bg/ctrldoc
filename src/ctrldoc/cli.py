@@ -51,6 +51,7 @@ from ctrldoc.provenance import new_run_id
 from ctrldoc.store import Store
 from ctrldoc.store.bm25 import BM25Index, TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore
+from ctrldoc.store.sqlite import SQLiteStore
 from ctrldoc.store.vectors import InMemoryVectorIndex, VectorIndex
 
 OutputFormat = Literal["markdown", "json", "both"]
@@ -84,6 +85,18 @@ app = typer.Typer(
         "Run `ctrldoc <command> --help` for per-command help."
     ),
 )
+
+workspace_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help=(
+        "Workspace primitives: create / add / list / info. A workspace "
+        "is a typed collection of doc-graphs sharing one concept lattice."
+    ),
+)
+app.add_typer(workspace_app, name="workspace")
+
+_WORKSPACE_DB_FILENAME = "workspaces.db"
 
 
 # --- shared helpers ---
@@ -198,7 +211,6 @@ def _build_per_doc_backends(
         )
     # thrifty / production share persistence; the LLM seams above are
     # what split between them.
-    from ctrldoc.store.sqlite import SQLiteStore
     from ctrldoc.store.vectors_sqlite_vec import SqliteVecVectorIndex
 
     return (
@@ -1288,6 +1300,204 @@ _RELATION_CLASSIFIER_SYSTEM_PROMPT = (
     "between the two concepts. Cite only chunk_ids that appear in "
     "EVIDENCE. No prose outside the JSON."
 )
+
+
+# --- workspace subcommands (§6.7, §9) ---
+
+
+def _workspace_store_path(config: Config) -> Path:
+    """Resolve the per-installation workspaces DB.
+
+    The workspaces DB is a separate SQLite file from the per-doc
+    indexes (which live at ``<runs_path>/indexes/<doc_hash>.db``) so
+    workspace CRUD has zero coupling to whichever docs have been
+    ingested. The parent dir is created on demand — the user's first
+    ``workspace create`` call bootstraps the file.
+    """
+    runs_path = Path(config.paths.runs_path)
+    runs_path.mkdir(parents=True, exist_ok=True)
+    return runs_path / _WORKSPACE_DB_FILENAME
+
+
+def _open_workspace_store(config: Config) -> SQLiteStore:
+    return SQLiteStore(_workspace_store_path(config))
+
+
+def _render_workspace_create_markdown(*, name: str, workspace_id: str) -> str:
+    return f"# ctrldoc — workspace create\n\n- **Name**: `{name}`\n- **ID**: `{workspace_id}`\n"
+
+
+def _render_workspace_add_markdown(*, name: str, doc_ids: list[str]) -> str:
+    docs_rendered = "\n".join(f"- `{d}`" for d in doc_ids) or "_(empty)_"
+    return (
+        "# ctrldoc — workspace add\n"
+        "\n"
+        f"- **Name**: `{name}`\n"
+        f"- **Doc count**: {len(doc_ids)}\n"
+        "\n"
+        "## Documents\n"
+        "\n"
+        f"{docs_rendered}\n"
+    )
+
+
+def _render_workspace_list_markdown(*, rows: list[dict[str, object]]) -> str:
+    if not rows:
+        return "# ctrldoc — workspace list\n\n_(no workspaces yet)_\n"
+    body = "\n".join(f"| `{r['name']}` | `{r['id']}` | {r['doc_count']} |" for r in rows)
+    return f"# ctrldoc — workspace list\n\n| Name | ID | Doc count |\n|---|---|---:|\n{body}\n"
+
+
+def _render_workspace_info_markdown(
+    *,
+    name: str,
+    workspace_id: str,
+    doc_ids: list[str],
+    concept_count: int,
+) -> str:
+    docs_rendered = "\n".join(f"- `{d}`" for d in doc_ids) or "_(empty)_"
+    return (
+        "# ctrldoc — workspace info\n"
+        "\n"
+        f"- **Name**: `{name}`\n"
+        f"- **ID**: `{workspace_id}`\n"
+        f"- **Doc count**: {len(doc_ids)}\n"
+        f"- **Concept count**: {concept_count}\n"
+        "\n"
+        "## Documents\n"
+        "\n"
+        f"{docs_rendered}\n"
+    )
+
+
+@workspace_app.command("create")
+def workspace_create(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="The workspace's human-readable name."),
+) -> None:
+    """Create a new workspace; name must be unique."""
+    from ctrldoc.ops.workspace import (
+        WorkspaceAlreadyExistsError,
+        WorkspaceManager,
+    )
+
+    state: CliState = ctx.obj
+    if not name.strip():
+        typer.echo("error: workspace name must not be blank", err=True)
+        raise typer.Exit(code=2)
+    config = _load_config(state.config_path)
+    with _open_workspace_store(config) as store:
+        manager = WorkspaceManager(store=store)
+        try:
+            workspace = manager.create(name)
+        except WorkspaceAlreadyExistsError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+    payload: dict[str, object] = {
+        "command": "workspace create",
+        "status": "ok",
+        "name": workspace.name,
+        "id": workspace.id,
+        "doc_ids": list(workspace.doc_ids),
+    }
+    markdown = _render_workspace_create_markdown(name=workspace.name, workspace_id=workspace.id)
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+@workspace_app.command("add")
+def workspace_add(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="The workspace name."),
+    doc_id: str = typer.Argument(..., help="Logical id of the doc to attach."),
+) -> None:
+    """Attach a document to an existing workspace; idempotent."""
+    from ctrldoc.ops.workspace import WorkspaceManager, WorkspaceNotFoundError
+
+    state: CliState = ctx.obj
+    if not doc_id.strip():
+        typer.echo("error: doc_id must not be blank", err=True)
+        raise typer.Exit(code=2)
+    config = _load_config(state.config_path)
+    with _open_workspace_store(config) as store:
+        manager = WorkspaceManager(store=store)
+        try:
+            workspace = manager.add(name, doc_id)
+        except WorkspaceNotFoundError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+    payload: dict[str, object] = {
+        "command": "workspace add",
+        "status": "ok",
+        "name": workspace.name,
+        "id": workspace.id,
+        "doc_ids": list(workspace.doc_ids),
+    }
+    markdown = _render_workspace_add_markdown(name=workspace.name, doc_ids=list(workspace.doc_ids))
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+@workspace_app.command("list")
+def workspace_list(ctx: typer.Context) -> None:
+    """List every workspace in creation order."""
+    from ctrldoc.ops.workspace import WorkspaceManager
+
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    with _open_workspace_store(config) as store:
+        manager = WorkspaceManager(store=store)
+        workspaces = manager.list()
+    rows: list[dict[str, object]] = [
+        {
+            "name": w.name,
+            "id": w.id,
+            "doc_count": len(w.doc_ids),
+            "doc_ids": list(w.doc_ids),
+        }
+        for w in workspaces
+    ]
+    payload: dict[str, object] = {
+        "command": "workspace list",
+        "status": "ok",
+        "workspaces": rows,
+    }
+    markdown = _render_workspace_list_markdown(rows=rows)
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+@workspace_app.command("info")
+def workspace_info(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="The workspace name."),
+) -> None:
+    """Show the workspace's docs and shared-concept-lattice rollup."""
+    from ctrldoc.ops.workspace import WorkspaceManager, WorkspaceNotFoundError
+
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    with _open_workspace_store(config) as store:
+        manager = WorkspaceManager(store=store)
+        try:
+            info = manager.info(name)
+        except WorkspaceNotFoundError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+    payload: dict[str, object] = {
+        "command": "workspace info",
+        "status": "ok",
+        "name": info.workspace.name,
+        "id": info.workspace.id,
+        "doc_count": info.doc_count,
+        "doc_ids": list(info.workspace.doc_ids),
+        "concept_count": info.concept_count,
+        "shared_concept_ids": list(info.shared_concept_ids),
+    }
+    markdown = _render_workspace_info_markdown(
+        name=info.workspace.name,
+        workspace_id=info.workspace.id,
+        doc_ids=list(info.workspace.doc_ids),
+        concept_count=info.concept_count,
+    )
+    _emit_output(state, markdown=markdown, payload=payload)
 
 
 def main() -> None:

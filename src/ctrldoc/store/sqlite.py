@@ -31,6 +31,8 @@ from pathlib import Path
 from types import TracebackType
 
 from ctrldoc.models import Chunk, Entity, Section
+from ctrldoc.models_v1 import Concept, Workspace
+from ctrldoc.provenance import Provenance, now_iso
 from ctrldoc.versioning import IndexVersions
 
 _SCHEMA = """
@@ -121,9 +123,10 @@ CREATE INDEX IF NOT EXISTS idx_edges_dst ON typed_edges(dst_id, type);
 
 CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     doc_ids_json TEXT NOT NULL,
     induced_schema_json TEXT NOT NULL DEFAULT '{}',
+    provenance_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL
 );
 
@@ -363,6 +366,129 @@ class SQLiteStore:
         ).fetchall()
         return [row[0] for row in rows]
 
+    # --- v2 workspace CRUD (§6.7) ---
+
+    def add_workspace(self, workspace: Workspace) -> None:
+        """Insert or replace a `Workspace` row.
+
+        `INSERT OR REPLACE` mirrors the v0.3 chunk/section/entity
+        semantics — same id ⇒ overwrite. Higher-level uniqueness
+        (one workspace per name) is enforced by the `WorkspaceManager`
+        facade and by the `UNIQUE` constraint on the `name` column.
+        """
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO workspaces
+                    (id, name, doc_ids_json, induced_schema_json,
+                     provenance_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    workspace.id,
+                    workspace.name,
+                    json.dumps(list(workspace.doc_ids)),
+                    json.dumps(dict(workspace.induced_schema)),
+                    workspace.provenance.model_dump_json(),
+                    now_iso(),
+                ),
+            )
+
+    def get_workspace_by_id(self, workspace_id: str) -> Workspace | None:
+        row = self._conn.execute(
+            "SELECT * FROM workspaces WHERE id = ?", (workspace_id,)
+        ).fetchone()
+        return _row_to_workspace(row) if row is not None else None
+
+    def get_workspace_by_name(self, name: str) -> Workspace | None:
+        row = self._conn.execute("SELECT * FROM workspaces WHERE name = ?", (name,)).fetchone()
+        return _row_to_workspace(row) if row is not None else None
+
+    def iter_workspaces(self) -> Iterator[Workspace]:
+        """Yield workspaces in their creation order.
+
+        Primary order key is the sortable ISO `created_at` timestamp;
+        SQLite's implicit monotonic `rowid` breaks sub-second ties so
+        the iteration order matches insertion order even when several
+        workspaces are created within the same wall-clock second.
+        """
+        for row in self._conn.execute("SELECT * FROM workspaces ORDER BY created_at, rowid"):
+            yield _row_to_workspace(row)
+
+    def update_workspace_doc_ids(self, workspace_id: str, doc_ids: Iterable[str]) -> None:
+        """Replace the workspace's `doc_ids` list without touching other fields.
+
+        Raises `KeyError` if the workspace does not exist — silent no-ops
+        on a missing id would let `workspace add unknown` succeed and
+        confuse the user.
+        """
+        new_doc_ids = list(doc_ids)
+        with self._conn:
+            cursor = self._conn.execute(
+                "UPDATE workspaces SET doc_ids_json = ? WHERE id = ?",
+                (json.dumps(new_doc_ids), workspace_id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"workspace not found: {workspace_id!r}")
+
+    # --- v2 concept CRUD (§6.7 shared concept lattice) ---
+
+    def add_concepts(self, concepts: Iterable[Concept]) -> None:
+        """Insert or replace a batch of `Concept` rows.
+
+        Concepts are canonical-cluster nodes — the same id ⇒ overwrite
+        path lets a downstream ER pass (S-130) widen `doc_ids` /
+        `mention_claim_ids` without a separate update method.
+        """
+        with self._conn:
+            self._conn.executemany(
+                """
+                INSERT OR REPLACE INTO concepts
+                    (id, canonical_name, aliases_json, primitive_type,
+                     mention_claim_ids_json, doc_ids_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        c.id,
+                        c.canonical_name,
+                        json.dumps(list(c.aliases)),
+                        c.primitive_type,
+                        json.dumps(list(c.mention_claim_ids)),
+                        json.dumps(list(c.doc_ids)),
+                    )
+                    for c in concepts
+                ],
+            )
+
+    def get_concept(self, concept_id: str) -> Concept | None:
+        row = self._conn.execute("SELECT * FROM concepts WHERE id = ?", (concept_id,)).fetchone()
+        return _row_to_concept(row) if row is not None else None
+
+    def iter_concepts(self) -> Iterator[Concept]:
+        for row in self._conn.execute("SELECT * FROM concepts ORDER BY id"):
+            yield _row_to_concept(row)
+
+    def concepts_for_workspace(self, workspace_id: str) -> Iterator[Concept]:
+        """Yield the shared-concept-lattice slice visible to a workspace.
+
+        A concept belongs to the slice when its `doc_ids` intersects
+        the workspace's `doc_ids` (§6.7). The filtering happens in
+        Python after a single SQL scan: the intersection predicate is
+        cheap, but the JSON `doc_ids` column is opaque to SQLite, and
+        the v1 workspace cardinality (≤ a handful of docs per
+        workspace until v2) makes the scan negligible.
+        """
+        ws = self.get_workspace_by_id(workspace_id)
+        if ws is None:
+            raise KeyError(f"workspace not found: {workspace_id!r}")
+        workspace_docs = set(ws.doc_ids)
+        if not workspace_docs:
+            return
+        for concept in self.iter_concepts():
+            if workspace_docs.intersection(concept.doc_ids):
+                yield concept
+
     # --- internals ---
 
     def _integrity_check(self) -> None:
@@ -431,6 +557,27 @@ def _row_to_section(row: sqlite3.Row) -> Section:
         title=row["title"],
         summary=row["summary"],
         chunk_ids=list(json.loads(row["chunk_ids_json"])),
+    )
+
+
+def _row_to_workspace(row: sqlite3.Row) -> Workspace:
+    return Workspace(
+        id=row["id"],
+        name=row["name"],
+        doc_ids=list(json.loads(row["doc_ids_json"])),
+        induced_schema=dict(json.loads(row["induced_schema_json"])),
+        provenance=Provenance.model_validate_json(row["provenance_json"]),
+    )
+
+
+def _row_to_concept(row: sqlite3.Row) -> Concept:
+    return Concept(
+        id=row["id"],
+        canonical_name=row["canonical_name"],
+        aliases=list(json.loads(row["aliases_json"])),
+        primitive_type=row["primitive_type"],
+        mention_claim_ids=list(json.loads(row["mention_claim_ids_json"])),
+        doc_ids=list(json.loads(row["doc_ids_json"])),
     )
 
 
