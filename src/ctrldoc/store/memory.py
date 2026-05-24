@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 
 from ctrldoc.models import Chunk, Entity, Section
-from ctrldoc.models_v1 import Claim, Concept
+from ctrldoc.models_v1 import Claim, Concept, TypedEdge
 from ctrldoc.versioning import IndexVersions
 
 
@@ -25,6 +25,9 @@ class InMemoryStore:
         self._entities: dict[str, Entity] = {}
         self._claims: dict[str, Claim] = {}
         self._concepts: dict[str, Concept] = {}
+        # Typed-edge rows keyed on the §8 PRIMARY KEY (src_id, dst_id, type).
+        # `INSERT OR REPLACE` semantics map to plain dict assignment.
+        self._typed_edges: dict[tuple[str, str, str], TypedEdge] = {}
 
     @property
     def versions(self) -> IndexVersions:
@@ -126,6 +129,30 @@ class InMemoryStore:
         for concept in self.iter_concepts():
             if member_docs.intersection(concept.doc_ids):
                 yield concept
+
+    # --- v2 typed-edge CRUD (§6.3 Galois, §6.5 Tier-2 NLI) ---
+
+    def append_typed_edge(self, edge: TypedEdge) -> None:
+        """Insert or replace one row, idempotent by (src_id, dst_id, type)."""
+        self._typed_edges[(edge.src_id, edge.dst_id, edge.type)] = edge
+
+    def iter_typed_edges(self) -> Iterator[TypedEdge]:
+        """Yield every persisted edge in `(type, src_id, dst_id)` order."""
+        for key in sorted(self._typed_edges, key=lambda k: (k[2], k[0], k[1])):
+            yield self._typed_edges[key]
+
+    def iter_typed_edges_for_doc(self, doc_id: str) -> Iterator[TypedEdge]:
+        """Yield edges whose `src_id` or `dst_id` belongs to `doc_id`.
+
+        Endpoint identity is the `Claim.doc_id` of the matching
+        persisted claim row. An edge whose endpoint is not present in
+        the store is silently skipped — defense in depth against a
+        future cross-store edge ever landing here.
+        """
+        doc_claim_ids = {c.id for c in self._claims.values() if c.doc_id == doc_id}
+        for edge in self.iter_typed_edges():
+            if edge.src_id in doc_claim_ids or edge.dst_id in doc_claim_ids:
+                yield edge
 
     # --- destructive ops ---
 
