@@ -47,6 +47,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   epsilon-shrink convergence to the exact plan, repeat-run
   determinism, epsilon ≤ 0 rejection, strictly-positive flow at high
   epsilon, inner-product bookkeeping, tight-tolerance convergence).
+- `ctrldoc.ops.coverage` — `coverage` + `list_check` operations via the
+  optimal-transport reduction (SPEC §6.6). `coverage(source, target,
+  scorer)` emits one `Covered` / `Missing` verdict per target claim in
+  input order; `list_check(items, doc, scorer)` is the same primitive
+  with items as targets and doc claims as sources, matching §6.6's
+  "list parsed as a tiny doc; `coverage(items → D)`" framing.
+  `TransportCoverageVerifier` adapts the same reduction onto the §14
+  `CrossDocCoverageVerifier` protocol so the existing eval substrate
+  grades it directly. The §6.6 entailment threshold (default `0.5`,
+  configurable via `CoverageConfig.entailment_threshold`) is encoded
+  as a slack column priced at `1 - threshold` — any real source with
+  entailment confidence above the threshold strictly beats slack and
+  the target reads `Covered`; otherwise the target's mass routes to
+  the slack column and reads `Missing`. Total source mass is
+  rebalanced with an absorption column so the `TransportProblem`
+  validator's balanced-mass check holds. Cost contract: exactly
+  `|sources| * |targets|` NLI scorer calls per `coverage` call.
+  `COVERAGE_VERDICT_ACCURACY_THRESHOLD` re-exports the eval
+  substrate's `CROSS_DOC_COVERAGE_THRESHOLD = 0.85` so callers gate
+  by the §6.6 release-gate constant; the release contract is asserted
+  end-to-end against the shipped 12-case fixture under a gold-aligned
+  NLI oracle that isolates the transport reduction's correctness from
+  any real backend's quality. 16 unit cases under
+  `family_determinism`, `family_verifier_calibration`, and
+  `family_performance_cost` cover empty-input short-circuits, hard
+  Covered/Missing verdicts, polarity-flip contradiction, many-to-one
+  transport, scorer-call accounting, repeat-run determinism, the
+  `list_check` mirror surface, the `CrossDocCoverageVerifier` protocol
+  shape, and the release-gate eval roll-up.
 - `ctrldoc.extract.isotonic_calibration` — isotonic regression for the
   §6.5 calibration pipeline. `IsotonicCalibrator.fit(raw_scores,
   correct)` runs the pool-adjacent-violators algorithm against
