@@ -582,6 +582,46 @@ class SQLiteStore:
         for row in self._conn.execute(sql, (doc_id,)):
             yield _row_to_typed_edge(row)
 
+    # --- v2 cross-doc edge CRUD (§6.7 workspace bridge) ---
+
+    def append_cross_doc_edge(self, *, workspace_id: str, edge: TypedEdge) -> None:
+        """Insert or replace one cross-doc edge row scoped to a workspace.
+
+        The composite PRIMARY KEY `(workspace_id, src_claim_id,
+        dst_claim_id, type)` plus `INSERT OR REPLACE` make a replayed
+        `workspace add` idempotent — the §6.7 lazy + cached contract
+        depends on it.
+        """
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO cross_doc_edges
+                    (workspace_id, src_claim_id, dst_claim_id, type,
+                     confidence, raw_score, citations_json, source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    workspace_id,
+                    edge.src_id,
+                    edge.dst_id,
+                    edge.type,
+                    float(edge.confidence),
+                    float(edge.raw_score),
+                    json.dumps([s.model_dump() for s in edge.citations]),
+                    edge.source,
+                ),
+            )
+
+    def iter_cross_doc_edges_for_workspace(self, workspace_id: str) -> Iterator[TypedEdge]:
+        """Yield workspace-scoped cross-doc edges in `(type, src, dst)` order."""
+        sql = """
+            SELECT * FROM cross_doc_edges
+            WHERE workspace_id = ?
+            ORDER BY type, src_claim_id, dst_claim_id
+        """
+        for row in self._conn.execute(sql, (workspace_id,)):
+            yield _row_to_cross_doc_edge(row)
+
     def concepts_for_workspace(self, workspace_id: str) -> Iterator[Concept]:
         """Yield the shared-concept-lattice slice visible to a workspace.
 
@@ -798,6 +838,29 @@ def _row_to_typed_edge(row: sqlite3.Row) -> TypedEdge:
         citations=[Span(**s) for s in json.loads(row["citations_json"])],
         source=row["source"],
         paraphrase_votes=int(paraphrase_votes) if paraphrase_votes is not None else None,
+    )
+
+
+def _row_to_cross_doc_edge(row: sqlite3.Row) -> TypedEdge:
+    """Project a `cross_doc_edges` row onto the shared `TypedEdge` model.
+
+    The cross-doc table uses different column names (`src_claim_id` /
+    `dst_claim_id`) to make the workspace-scoped relationship explicit,
+    but the surface shape is the same `TypedEdge` the typed-edges table
+    persists. `paraphrase_votes` is always None for cross-doc edges
+    because the workspace inferer does not run the §6.5 paraphrase
+    voter — that lives one layer up.
+    """
+    edge_type: TypedEdgeTypeLiteral = row["type"]
+    return TypedEdge(
+        src_id=row["src_claim_id"],
+        dst_id=row["dst_claim_id"],
+        type=edge_type,
+        confidence=float(row["confidence"]),
+        raw_score=float(row["raw_score"]),
+        citations=[Span(**s) for s in json.loads(row["citations_json"])],
+        source=row["source"],
+        paraphrase_votes=None,
     )
 
 

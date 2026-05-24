@@ -28,8 +28,10 @@ import builtins
 import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
-from ctrldoc.models_v1 import Concept, Workspace
+from ctrldoc.models_v1 import Claim, Concept, Workspace
+from ctrldoc.ops.cross_doc_edges import CrossDocEdgeInferer
 from ctrldoc.provenance import Provenance
 from ctrldoc.store.sqlite import SQLiteStore
 
@@ -45,6 +47,23 @@ class WorkspaceNotFoundError(KeyError):
 
 class WorkspaceAlreadyExistsError(ValueError):
     """Raised when `create()` is called with a name that already exists."""
+
+
+@runtime_checkable
+class DocResolver(Protocol):
+    """Reads claims + concepts for a given `doc_id` from per-doc storage.
+
+    The workspace store is a separate SQLite file from the per-doc
+    indexes (`runs/indexes/<doc_hash>.db`). When `workspace add` lands
+    a doc, the manager needs to bridge the doc's concepts into the
+    workspace store and feed its claims to the cross-doc edge inferer.
+    This Protocol is the seam — in production the CLI plugs in an
+    adapter that opens the matching per-doc SQLiteStore; in unit tests
+    a stub returns canned lists.
+    """
+
+    def claims_for_doc(self, doc_id: str) -> Iterable[Claim]: ...
+    def concepts_for_doc(self, doc_id: str) -> Iterable[Concept]: ...
 
 
 @dataclass(frozen=True)
@@ -93,10 +112,27 @@ def _dedupe_preserve_order(values: Iterable[str]) -> list[str]:
 
 
 class WorkspaceManager:
-    """CRUD facade over `SQLiteStore` for the v1 `Workspace` primitive."""
+    """CRUD facade over `SQLiteStore` for the v1 `Workspace` primitive.
 
-    def __init__(self, *, store: SQLiteStore) -> None:
+    The optional `doc_resolver` + `cross_doc_inferer` plug into
+    `add()` to bridge §6.7 cross-doc state — concepts are mirrored
+    into the workspace store so the shared-lattice rollup works, and
+    `CrossDocEdgeInferer` runs over the incoming doc plus every
+    existing member to populate the `cross_doc_edges` table. Both are
+    opt-in: legacy call sites that pre-date S-156 pass neither and
+    keep the unchanged CRUD-only surface.
+    """
+
+    def __init__(
+        self,
+        *,
+        store: SQLiteStore,
+        doc_resolver: DocResolver | None = None,
+        cross_doc_inferer: CrossDocEdgeInferer | None = None,
+    ) -> None:
         self._store = store
+        self._doc_resolver = doc_resolver
+        self._cross_doc_inferer = cross_doc_inferer
 
     # --- create ---
 
@@ -126,21 +162,92 @@ class WorkspaceManager:
     def add(self, name: str, doc_id: str) -> Workspace:
         """Attach a doc to the workspace; idempotent and order-preserving.
 
-        Re-adding the same doc is a no-op so callers can replay the
-        command without first checking membership. Document order is
-        preserved across additions because cross-doc-edge enumeration
-        (S-135) walks pairs in a stable order to keep verdict-ledger
-        replay deterministic (§6.5).
+        Re-adding the same doc is a no-op for the doc-list update so
+        callers can replay the command without first checking
+        membership. Document order is preserved across additions
+        because cross-doc-edge enumeration walks pairs in a stable
+        order to keep verdict-ledger replay deterministic (§6.5).
+
+        When a `doc_resolver` is wired into the manager, the new doc's
+        concepts are mirrored into the workspace store so
+        `WorkspaceInfo.shared_concept_ids` surfaces them. When both a
+        resolver AND a `cross_doc_inferer` are wired AND the workspace
+        already had at least one prior member, the inferer runs over
+        the new doc + every existing member and persists every emitted
+        `TypedEdge` into `cross_doc_edges`. Per §6.7 the call budget
+        stays linear in `|new_claims| * existing_doc_count * k`.
         """
         cleaned_doc = _validate_doc_id(doc_id)
         workspace = self._require_workspace(name)
-        new_doc_ids = _dedupe_preserve_order([*workspace.doc_ids, cleaned_doc])
-        if new_doc_ids == list(workspace.doc_ids):
-            return workspace
-        self._store.update_workspace_doc_ids(workspace.id, new_doc_ids)
-        updated = self._store.get_workspace_by_id(workspace.id)
-        assert updated is not None  # just updated; cannot have vanished.
+        prior_doc_ids = list(workspace.doc_ids)
+        new_doc_ids = _dedupe_preserve_order([*prior_doc_ids, cleaned_doc])
+        doc_list_changed = new_doc_ids != prior_doc_ids
+        if doc_list_changed:
+            self._store.update_workspace_doc_ids(workspace.id, new_doc_ids)
+            updated = self._store.get_workspace_by_id(workspace.id)
+            assert updated is not None  # just updated; cannot have vanished.
+        else:
+            updated = workspace
+
+        # Bridge concepts + run cross-doc edge inference. The bridge
+        # runs on every call (idempotent on Concept.id) so a replay
+        # picks up concepts produced by a later per-doc ER pass; the
+        # cross-doc inference runs against the prior member list so
+        # the very first add is a no-op even on replay.
+        if self._doc_resolver is not None:
+            self._bridge_concepts(cleaned_doc)
+            if self._cross_doc_inferer is not None and prior_doc_ids:
+                self._infer_cross_doc_edges(
+                    workspace_id=updated.id,
+                    new_doc_id=cleaned_doc,
+                    existing_doc_ids=prior_doc_ids,
+                )
+
         return updated
+
+    # --- §6.7 helpers (concept bridge + cross-doc edge inference) ---
+
+    def _bridge_concepts(self, doc_id: str) -> None:
+        """Mirror the per-doc concepts into the workspace store.
+
+        `Store.add_concepts` is idempotent on `Concept.id` so
+        re-bridging is safe; concepts that already exist with the same
+        id are overwritten by the freshest copy from the per-doc
+        resolver.
+        """
+        resolver = self._doc_resolver
+        assert resolver is not None
+        concepts = list(resolver.concepts_for_doc(doc_id))
+        if concepts:
+            self._store.add_concepts(concepts)
+
+    def _infer_cross_doc_edges(
+        self,
+        *,
+        workspace_id: str,
+        new_doc_id: str,
+        existing_doc_ids: list[str],
+    ) -> None:
+        """Run `CrossDocEdgeInferer` over the new doc + prior members and persist.
+
+        The inferer reads `claims_by_doc` and emits `TypedEdge` rows;
+        we persist each row through `Store.append_cross_doc_edge`
+        scoped to `workspace_id` so the SQL PRIMARY KEY
+        `(workspace_id, src_claim_id, dst_claim_id, type)` keeps
+        replays idempotent.
+        """
+        resolver = self._doc_resolver
+        inferer = self._cross_doc_inferer
+        assert resolver is not None
+        assert inferer is not None
+        claims_by_doc: dict[str, list[Claim]] = {
+            new_doc_id: list(resolver.claims_for_doc(new_doc_id)),
+        }
+        for existing_doc in existing_doc_ids:
+            claims_by_doc[existing_doc] = list(resolver.claims_for_doc(existing_doc))
+        inference = inferer.infer(workspace_id=workspace_id, claims_by_doc=claims_by_doc)
+        for edge in inference.edges:
+            self._store.append_cross_doc_edge(workspace_id=workspace_id, edge=edge)
 
     # --- list ---
 
@@ -196,6 +303,7 @@ class WorkspaceManager:
 
 
 __all__ = [
+    "DocResolver",
     "WorkspaceAlreadyExistsError",
     "WorkspaceInfo",
     "WorkspaceManager",
