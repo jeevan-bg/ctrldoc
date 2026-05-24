@@ -99,3 +99,18 @@ This file collects the significant architectural choices in `ctrldoc`. Each entr
 - The library composes with any authoring workflow.
 - We cannot guarantee a document is free of issues, only that we found the ones we report.
 - Write-time enforcement remains a possible future product surface.
+
+## ADR-0007 — In-house JSON-RPC 2.0 transport for the §11 MCP server
+
+**Status:** Accepted
+
+**Context.** §11 ships `ctrldoc mcp serve` as a stdio MCP server that exposes the §6.10 tool surface to any MCP-compatible host. Two implementation paths exist: depend on the upstream `mcp` Python SDK (released by Anthropic, ~1.27.x at the time of writing) or implement the line-framed JSON-RPC 2.0 wire protocol in-house. The §11 surface needs only three methods — `initialize`, `tools/list`, `tools/call` — and the dispatch fan-out is already owned by `ctrldoc.orch.tools.ToolDispatcher` (S-142).
+
+**Decision.** Implement the wire in-house. `src/ctrldoc/mcp/server.py` owns the JSON-RPC 2.0 envelope parsing, the three method handlers, and the line-framed stdio reader/writer. The `ToolDispatcher` provides the catalogue and the call surface unchanged.
+
+**Consequences.**
+
+- No new runtime dependency. The `mcp` SDK pulls in `anyio`, `starlette`, `httpx-sse`, and an async event-loop assumption — none of which the §11 surface uses.
+- Integration tests stay deterministic and synchronous. The end-to-end round-trip runs in a single subprocess driven by `subprocess.Popen` over stdin/stdout — no async event loop, no fixture pinning, no upstream-release coupling.
+- The wire spec is small and well-defined (JSON-RPC 2.0 + the three MCP methods we support); a stock host (Claude Desktop, Claude CLI) interoperates without adaptation because the wire format is the standard.
+- If the v2 surface grows resources / prompts / sampling / roots, we can swap to the upstream SDK behind the same public `MCPServer` / `serve_stdio` API. The seam is the public module surface, not the implementation.

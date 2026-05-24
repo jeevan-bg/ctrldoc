@@ -8,6 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.mcp` + `ctrldoc mcp serve` — Model Context Protocol server
+  exposing the §6.10 13-tool surface over stdio JSON-RPC 2.0 (SPEC
+  §11). `MCPServer` owns the protocol layer: envelope parsing, the
+  three required methods (`initialize` / `tools/list` / `tools/call`),
+  and per-call dispatch through the existing `ToolDispatcher` from
+  S-142. `tools/list` derives each tool's `inputSchema` from the
+  registered Pydantic `input_model.model_json_schema()` so the
+  catalogue is byte-deterministic across calls and stays in lock-step
+  with the L4 surface. `serverInfo.version` ships
+  `TOOL_SURFACE_VERSION` so any MCP host can detect schema drift via
+  the handshake (§13 non-negotiable 14). Tool-level failures (unwired
+  handler, validation error, handler exception) surface as
+  `CallToolResult.isError=true` with a text content block — never a
+  silent no-op (§13 non-negotiable 3); transport-level failures
+  (malformed envelope, unknown method) return a JSON-RPC `error`
+  envelope with a reserved-band code. `serve_stdio` is the
+  line-framed reader/writer loop that drives the protocol over
+  `sys.stdin` / `sys.stdout`; blank lines are skipped, malformed JSON
+  surfaces a parse-error envelope without killing the loop, EOF
+  terminates cleanly. The integration test spawns
+  `python -m ctrldoc mcp serve` as a real subprocess and drives the
+  full `initialize` → `tools/list` → `tools/call` round-trip from a
+  stock JSON-RPC 2.0 client written inline, proving the wire format
+  is the standard MCP stdio transport a third-party host (Claude
+  Desktop, Claude CLI) would speak. ADR-0007 documents the in-house-
+  vs-`mcp`-SDK transport decision: the surface is JSON-RPC 2.0 with
+  three methods, implementing it directly keeps the dependency graph
+  small and the integration test deterministic.
 - `ctrldoc.orch.ledger` — L4 verdict ledger + `ctrldoc ledger {list,
   show, replay}` CLI (SPEC §6.5, §11). `VerdictLedger` is a thin
   facade over `SQLiteStore` exposing `append`, `get`, `list_entries`,

@@ -12,3 +12,4 @@ Each fragment is a per-ADR read-view of `docs/DECISIONS.md`. Read the specific A
 | [`ADR-0004`](./ADR-0004.md) | 57 |
 | [`ADR-0005`](./ADR-0005.md) | 73 |
 | [`ADR-0006`](./ADR-0006.md) | 89 |
+| [`ADR-0007`](./ADR-0007.md) | 103 |
