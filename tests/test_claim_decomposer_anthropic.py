@@ -109,3 +109,24 @@ def test_custom_model_passed_through() -> None:
     call = client.messages.last_call
     assert call is not None
     assert call["model"] == "claude-opus-4-7"
+
+
+def test_language_tagged_code_fence_is_tolerated() -> None:
+    """Anthropic sometimes wraps the response in ` ```json ... ``` `."""
+    fenced = "```json\n" + json.dumps({"claims": ["A.", "B."]}) + "\n```"
+    client = _StubClient(fenced)
+    out = AnthropicClaimDecomposer(client=client).decompose("answer")  # type: ignore[arg-type]
+    assert out == ["A.", "B."]
+
+
+def test_bare_code_fence_is_tolerated() -> None:
+    fenced = "```\n" + json.dumps({"claims": ["only"]}) + "\n```"
+    client = _StubClient(fenced)
+    out = AnthropicClaimDecomposer(client=client).decompose("answer")  # type: ignore[arg-type]
+    assert out == ["only"]
+
+
+def test_refusal_inside_fence_still_raises() -> None:
+    client = _StubClient("```\nI cannot answer that.\n```")
+    with pytest.raises(ValueError):
+        AnthropicClaimDecomposer(client=client).decompose("answer")  # type: ignore[arg-type]

@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.retrieval.dsl import Plan
+from ctrldoc.verify.json_utils import strip_code_fence
 
 if TYPE_CHECKING:
     from anthropic import Anthropic
@@ -98,10 +99,11 @@ def _extract_text(message: object) -> str:
 
 
 def _parse_plan(text: str) -> Plan:
+    payload_text = strip_code_fence(text)
     try:
-        payload = json.loads(text)
+        payload = json.loads(payload_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"planner returned non-JSON output: {text[:80]!r}") from exc
+        raise ValueError(f"planner returned non-JSON output: {payload_text[:80]!r}") from exc
     try:
         return Plan.model_validate(payload)
     except ValidationError as exc:

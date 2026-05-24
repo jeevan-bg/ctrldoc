@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from ctrldoc.verify.json_utils import strip_code_fence
+
 if TYPE_CHECKING:
     from anthropic import Anthropic
 
@@ -72,10 +74,11 @@ def _extract_text(message: object) -> str:
 
 
 def _parse_claims(text: str) -> list[str]:
+    payload_text = strip_code_fence(text)
     try:
-        payload: Any = json.loads(text)
+        payload: Any = json.loads(payload_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"claim decomposer returned non-JSON: {text[:80]!r}") from exc
+        raise ValueError(f"claim decomposer returned non-JSON: {payload_text[:80]!r}") from exc
     if not isinstance(payload, dict) or "claims" not in payload:
         raise ValueError("claim decomposer response missing 'claims' field")
     raw_claims = payload["claims"]

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ctrldoc.verify.json_utils import strip_code_fence
 from ctrldoc.verify.judge import JudgeResult
 
 _SYSTEM_PROMPT = (
@@ -89,17 +90,8 @@ def _extract_text(response: Any) -> str:
     return str(content).strip()
 
 
-def _strip_code_fence(text: str) -> str:
-    if not text.startswith("```"):
-        return text
-    body = text.split("\n", 1)[1] if "\n" in text else ""
-    if body.endswith("```"):
-        body = body[: -len("```")]
-    return body.strip()
-
-
 def _parse_result(text: str) -> JudgeResult:
-    payload_text = _strip_code_fence(text)
+    payload_text = strip_code_fence(text)
     try:
         payload: Any = json.loads(payload_text)
     except json.JSONDecodeError as exc:
@@ -110,7 +102,7 @@ def _parse_result(text: str) -> JudgeResult:
         if key not in payload:
             raise ValueError(f"LLM-judge response missing key: {key!r}")
     confidence_raw = payload["confidence"]
-    if not isinstance(confidence_raw, (int, float)):
+    if not isinstance(confidence_raw, int | float):
         raise ValueError("LLM-judge confidence must be a number")
     confidence = max(0.0, min(1.0, float(confidence_raw)))
     return JudgeResult(

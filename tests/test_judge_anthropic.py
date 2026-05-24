@@ -128,3 +128,27 @@ def test_custom_model_passed_through() -> None:
     call = client.messages.last_call
     assert call is not None
     assert call["model"] == "claude-haiku-4-5"
+
+
+def test_language_tagged_code_fence_is_tolerated() -> None:
+    """Anthropic sometimes returns ` ```json ... ``` ` despite the prompt."""
+    fenced = "```json\n" + _reply(True, 0.8, "fenced") + "\n```"
+    client = _StubClient(fenced)
+    result = AnthropicLLMJudge(client=client).judge("c", "e")  # type: ignore[arg-type]
+    assert result.passed is True
+    assert result.confidence == pytest.approx(0.8)
+
+
+def test_bare_code_fence_is_tolerated() -> None:
+    fenced = "```\n" + _reply(False, 0.2, "bare") + "\n```"
+    client = _StubClient(fenced)
+    result = AnthropicLLMJudge(client=client).judge("c", "e")  # type: ignore[arg-type]
+    assert result.passed is False
+    assert result.confidence == pytest.approx(0.2)
+
+
+def test_refusal_inside_fence_still_raises() -> None:
+    """A refusal wrapped in fences must surface as a parse error."""
+    client = _StubClient("```\nI cannot answer that.\n```")
+    with pytest.raises(ValueError):
+        AnthropicLLMJudge(client=client).judge("c", "e")  # type: ignore[arg-type]

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from ctrldoc.verify.json_utils import strip_code_fence
 from ctrldoc.verify.judge import JudgeResult
 
 if TYPE_CHECKING:
@@ -85,17 +86,18 @@ def _extract_text(message: object) -> str:
 
 
 def _parse_result(text: str) -> JudgeResult:
+    payload_text = strip_code_fence(text)
     try:
-        payload: Any = json.loads(text)
+        payload: Any = json.loads(payload_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM-judge returned non-JSON: {text[:80]!r}") from exc
+        raise ValueError(f"LLM-judge returned non-JSON: {payload_text[:80]!r}") from exc
     if not isinstance(payload, dict):
         raise ValueError("LLM-judge response must be a JSON object")
     for key in ("passed", "confidence", "reasoning"):
         if key not in payload:
             raise ValueError(f"LLM-judge response missing key: {key!r}")
     confidence_raw = payload["confidence"]
-    if not isinstance(confidence_raw, (int, float)):
+    if not isinstance(confidence_raw, int | float):
         raise ValueError("LLM-judge confidence must be a number")
     confidence = max(0.0, min(1.0, float(confidence_raw)))
     return JudgeResult(
