@@ -19,6 +19,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.tier2` + `ctrldoc.extract.tier2_spacy` — Tier-2
+  SVO claim-tuple extractor per SPEC §6.4. The pure-Python helpers in
+  `tier2` carry the modality lexicon (`must` / `shall` / `should` /
+  `may` / `if` / `when` / `cannot` ...), a `NEGATION_TOKENS`
+  frozenset, a `classify_modality` priority ladder that resolves the
+  `shall not` -> prohibited rewrite, a `merge_modality_with_polarity`
+  reconciliation rule, and a `lemmatize_predicate` helper that does
+  subject-verb agreement on the verb lemma. `tier2_spacy.SpacyTier2-
+  SVOExtractor` drives a spaCy `en_core_web_sm` dependency parser to
+  fill the `Claim = (subject, predicate, object, polarity, modality,
+  qualifier)` tuple from §6.2, satisfying the `ClaimExtractor`
+  Protocol so the new extractor drops straight into the
+  `ClaimExtractionEvalRunner` shipped by S-119. The backend handles
+  copular `acomp` / `attr` decomposition, passive `auxpass`
+  constructions (including `shall be resolved` modal-passive
+  periphrasis), past-tense preservation for narrative prose, agent-PP
+  object capture (`is governed by California law`), prep-tail trim
+  with an argument-PP carve-out (`with` / `by` / `from` PPs stay
+  inside the object when they directly modify it), `advcl` / `xcomp`
+  purpose-clause qualifiers, sentence-prefix conditional scanning,
+  and `if` -> `when` qualifier normalisation. The release gate is
+  `TIER2_F1_THRESHOLD = 0.75` on the SVO-amenable subset of
+  `tests/eval/claim_extraction_eval.jsonl` (single-tuple cases with
+  the gold subject head word in the source sentence, no
+  reporting-verb paraphrase or modal-periphrasis collapse — the
+  patterns excluded here are routed to the Tier-3 LLM-mediated pass
+  queued by S-129+).
 - `ctrldoc.extract.tier1` — deterministic claim-graph floor per SPEC
   §6.4. Four heuristic pattern families compose in a single pass:
   Hearst lexico-syntactic patterns (`X such as Y`, `X including Y`,

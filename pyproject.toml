@@ -38,6 +38,7 @@ ingest = [
   "tree-sitter>=0.22",
   "fastcoref>=2.1",
   "gliner>=0.2",
+  "spacy>=3.8",
 ]
 index = [
   "sqlite-vec>=0.1",
