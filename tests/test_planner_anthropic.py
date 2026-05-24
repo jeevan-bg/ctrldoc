@@ -141,3 +141,25 @@ def test_custom_model_and_max_tokens() -> None:
     assert call is not None
     assert call["model"] == "claude-opus-4-7"
     assert call["max_tokens"] == 512
+
+
+def test_language_tagged_code_fence_is_tolerated() -> None:
+    """The planner round-trips ` ```json ... ``` ` wrappers."""
+    fenced = "```json\n" + _reply([{"op": "expand", "section_id": "sec/x"}]) + "\n```"
+    client = _StubClient(fenced)
+    plan = AnthropicPlanner(client=client).plan(_prefix(), "q")  # type: ignore[arg-type]
+    assert len(plan.steps) == 1
+    assert plan.steps[0].op == "expand"
+
+
+def test_bare_code_fence_is_tolerated() -> None:
+    fenced = "```\n" + _reply([]) + "\n```"
+    client = _StubClient(fenced)
+    plan = AnthropicPlanner(client=client).plan(_prefix(), "q")  # type: ignore[arg-type]
+    assert plan.steps == []
+
+
+def test_refusal_inside_fence_still_raises() -> None:
+    client = _StubClient("```\nI cannot answer that.\n```")
+    with pytest.raises(ValueError):
+        AnthropicPlanner(client=client).plan(_prefix(), "q")  # type: ignore[arg-type]
