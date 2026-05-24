@@ -19,8 +19,8 @@ from pydantic import ValidationError
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import Claim, EvidencePack, Span
+from ctrldoc.ops.qa import AnswerReport, QAPlaybook, QARetriever
 from ctrldoc.orch.task import StatelessTaskRunner, TaskInput
-from ctrldoc.playbooks.qa import AnswerReport, QAPlaybook, QARetriever
 
 # --- stubs ---
 

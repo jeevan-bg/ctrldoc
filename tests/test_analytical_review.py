@@ -23,8 +23,7 @@ from pydantic import ValidationError
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import Finding, Span
-from ctrldoc.orch.synthesis import SynthesisRunner
-from ctrldoc.playbooks.review import (
+from ctrldoc.ops.review import (
     AnalyticalReviewPlaybook,
     HeuristicLensGenerator,
     Lens,
@@ -33,6 +32,7 @@ from ctrldoc.playbooks.review import (
     ReviewNarrative,
     ReviewReport,
 )
+from ctrldoc.orch.synthesis import SynthesisRunner
 
 # --- fixtures ---
 

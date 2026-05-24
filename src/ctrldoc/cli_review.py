@@ -28,8 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.cli_audit import BundleRetriever
 from ctrldoc.models import Finding, SeverityLiteral
+from ctrldoc.ops.review import Lens, ReviewReport
 from ctrldoc.orch.task import StatelessTaskRunner, TaskInput
-from ctrldoc.playbooks.review import Lens, ReviewReport
 
 _LENS_SWEEPER_SYSTEM_PROMPT = (
     "You are a strict analytical reviewer. Given a LENS and EVIDENCE "

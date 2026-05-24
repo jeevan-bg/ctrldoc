@@ -20,12 +20,12 @@ from dataclasses import dataclass
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import Finding, Span
-from ctrldoc.orch.synthesis import SynthesisRunner
-from ctrldoc.playbooks.review import (
+from ctrldoc.ops.review import (
     AnalyticalReviewPlaybook,
     HeuristicLensGenerator,
     Lens,
 )
+from ctrldoc.orch.synthesis import SynthesisRunner
 
 
 @dataclass

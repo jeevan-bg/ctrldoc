@@ -25,8 +25,8 @@ from ctrldoc.eval.coverage import (
     EvidenceSpan,
 )
 from ctrldoc.eval.harness import load_jsonl_cases, run_eval
+from ctrldoc.ops.audit import ChecklistItem
 from ctrldoc.orch.batch import BatchedTaskRunner
-from ctrldoc.playbooks.coverage import ChecklistItem
 
 COVERAGE_EVAL_PATH = Path(__file__).parent / "eval" / "coverage_eval.jsonl"
 

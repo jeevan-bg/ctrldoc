@@ -21,18 +21,18 @@ from pydantic import ValidationError
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import EvidencePack, Span
-from ctrldoc.orch.batch import BatchedTaskRunner
-from ctrldoc.playbooks.coverage import (
+from ctrldoc.ops.audit import (
     ChecklistItem,
     CoverageAuditPlaybook,
     CoverageReport,
 )
-from ctrldoc.playbooks.quality import (
+from ctrldoc.ops.quality import (
     CriteriaGenerator,
     HeuristicCriteriaGenerator,
     QualityAuditPlaybook,
     QualityReport,
 )
+from ctrldoc.orch.batch import BatchedTaskRunner
 
 # --- stubs ---
 

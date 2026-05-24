@@ -26,7 +26,7 @@ from typer.testing import CliRunner
 from ctrldoc.cli import app
 from ctrldoc.cli_scan import render_scan_markdown
 from ctrldoc.models import Finding, Span
-from ctrldoc.playbooks.anomaly import AnomalyQueue
+from ctrldoc.ops.scan import AnomalyQueue
 
 runner = CliRunner()
 

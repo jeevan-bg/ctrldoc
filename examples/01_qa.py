@@ -20,8 +20,8 @@ from dataclasses import dataclass
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import Claim, EvidencePack, Span
+from ctrldoc.ops.qa import QAPlaybook
 from ctrldoc.orch.task import StatelessTaskRunner
-from ctrldoc.playbooks.qa import QAPlaybook
 
 
 @dataclass

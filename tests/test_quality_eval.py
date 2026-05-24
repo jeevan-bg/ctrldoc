@@ -24,8 +24,8 @@ from ctrldoc.eval.quality import (
     QualityEvalRunner,
     criteria_coverage,
 )
-from ctrldoc.playbooks.coverage import ChecklistItem
-from ctrldoc.playbooks.quality import (
+from ctrldoc.ops.audit import ChecklistItem
+from ctrldoc.ops.quality import (
     CriteriaGenerator,
     HeuristicCriteriaGenerator,
 )

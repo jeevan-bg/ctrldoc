@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import EvidencePack, Span
+from ctrldoc.ops.audit import ChecklistItem, CoverageAuditPlaybook
 from ctrldoc.orch.batch import BatchedTaskRunner
-from ctrldoc.playbooks.coverage import ChecklistItem, CoverageAuditPlaybook
 
 
 @dataclass

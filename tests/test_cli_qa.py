@@ -32,7 +32,7 @@ from ctrldoc.cli_audit import BundleRetriever
 from ctrldoc.cli_qa import VerifierRetriever, render_qa_markdown
 from ctrldoc.config import Config
 from ctrldoc.models import Claim, Span
-from ctrldoc.playbooks.qa import AnswerReport
+from ctrldoc.ops.qa import AnswerReport
 from ctrldoc.store.bm25 import TantivyBM25Index
 from ctrldoc.store.memory import InMemoryStore
 from ctrldoc.store.vectors import InMemoryVectorIndex

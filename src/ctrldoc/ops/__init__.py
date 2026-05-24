@@ -1,11 +1,10 @@
 """L2.5 / L5 universal-substrate operations.
 
-The `ops` package owns the post-ingest operations that read the claim
-graph and the workspace primitive: workspace CRUD today (S-134),
-optimal-transport coverage / compare / merge / list_check later (Phase
-18). It is the seam the CLI commands route through as the v1
-substrate replaces the per-playbook L5 code paths in
-`ctrldoc.playbooks/` (deleted at S-146).
+The `ops` package owns every post-ingest operation: the v1 substrate
+itself (`workspace`, `cross_doc_edges`, `coverage`, `compare`, `merge`,
+`transport`) plus the v0.3 CLI-aligned operations (`scan`, `qa`,
+`review`, `map`, `audit`, `quality`). One package, one import path;
+every CLI command routes through `ctrldoc.ops.*` and nothing else.
 
-SPEC-REF: §6.6, §6.7, §9
+SPEC-REF: §6 (universal substrate kills the playbook layer), §6.6, §6.7, §9
 """

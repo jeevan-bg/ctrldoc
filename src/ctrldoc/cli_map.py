@@ -35,12 +35,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.cli_audit import BundleRetriever
 from ctrldoc.models import EvidencePack, RelationTypeLiteral, Span
-from ctrldoc.orch.task import StatelessTaskRunner, TaskInput
-from ctrldoc.playbooks.relations import (
+from ctrldoc.ops.map import (
     Concept,
     RelationClassification,
     RelationGraph,
 )
+from ctrldoc.orch.task import StatelessTaskRunner, TaskInput
 from ctrldoc.store import Store
 
 DEFAULT_MAX_CONCEPTS = 10

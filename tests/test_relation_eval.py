@@ -27,7 +27,7 @@ from ctrldoc.eval.relation import (
     relation_type_accuracy,
 )
 from ctrldoc.models import EvidencePack, Span
-from ctrldoc.playbooks.relations import (
+from ctrldoc.ops.map import (
     Concept,
     RelationClassification,
 )

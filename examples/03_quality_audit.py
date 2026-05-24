@@ -19,12 +19,12 @@ from dataclasses import dataclass, field
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.models import EvidencePack, Span
-from ctrldoc.orch.batch import BatchedTaskRunner
-from ctrldoc.playbooks.coverage import CoverageAuditPlaybook
-from ctrldoc.playbooks.quality import (
+from ctrldoc.ops.audit import CoverageAuditPlaybook
+from ctrldoc.ops.quality import (
     HeuristicCriteriaGenerator,
     QualityAuditPlaybook,
 )
+from ctrldoc.orch.batch import BatchedTaskRunner
 
 
 @dataclass
