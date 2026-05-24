@@ -19,6 +19,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.galois` — Galois subsumption lattice over the
+  universal claim tuple per SPEC §6.3. `claim_subsumption(left, right)`
+  returns one of `equivalent` / `subsumes` / `subsumed_by` /
+  `incomparable`; `claim_join` is the lattice LUB (the weakest claim
+  both operands imply) and `claim_meet` is the GLB (the strongest
+  claim that implies both), each returning `None` for incomparable
+  pairs that share no common weakening / strengthening at the
+  structural floor. The deterministic ordering reasons on the six
+  §6.2 universal-tuple slots only: surface-form SVO inequality after
+  the `normalize_text` pipeline, polarity flips, or cross-axis
+  modality pairs collapse to `incomparable`. Modalities map to three
+  axes — the deontic chain `obligatory ⊐ recommended ⊐ permitted`
+  (RFC-2119 `MUST ⊐ SHOULD ⊐ MAY`), the prohibitive chain
+  `prohibited ⊐ recommended ⊐ permitted` reached under negative
+  polarity, and the singleton axes `asserted` (descriptive) and
+  `hypothetical` (conditional). Within a same-axis pair an empty
+  qualifier is strictly stronger than any scoped qualifier (the
+  universal claim entails every narrowed instance), and two distinct
+  non-empty qualifiers do not order — semantic scope reasoning is the
+  upcoming NLI/LLM path's job, which calls this floor first and only
+  escalates when it returns `incomparable`. Pure-function module; no
+  I/O, no LLM, no state; output byte-identical across repeat calls.
 - `ctrldoc.extract.entity_resolution` — entity-resolution
   canonicalizer per SPEC §6.8. `EntityResolver` runs the standard
   four-step ER recipe over a batch of `ConceptMention` rows:
