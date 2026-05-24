@@ -275,10 +275,30 @@ def serve_stdio(
     server's signal to soldier on, not to abort the session.
 
     The loop terminates on EOF (the client closed its half of the pipe).
+
+    When called without an explicit `server`, this function wires the
+    pure-Python handler floor (`subsumes` / `optimal_transport` /
+    `calibration` — see `ctrldoc.mcp.handlers.register_default_handlers`)
+    into a fresh dispatcher before serving. Storage-backed, OT-backed,
+    and LLM-backed handler waves attach in later slices; until those
+    land, their tools remain unwired and surface as `isError=true`.
     """
     import sys as _sys
 
-    srv = server if server is not None else MCPServer()
+    if server is None:
+        from ctrldoc.mcp.handlers import MCPHandlerDeps, register_default_handlers
+
+        dispatcher = ToolDispatcher()
+        # No claim lookup and no calibration data on the bare CLI entry —
+        # that wiring belongs to slices that own those substrates
+        # (S-158 for the SQLiteStore-backed `claim_lookup`, the
+        # calibration sweep slice for per-backend labelled batches).
+        # Until then the factory wires `optimal_transport` and
+        # `calibration` unconditionally; `subsumes` stays unwired.
+        register_default_handlers(dispatcher=dispatcher, deps=MCPHandlerDeps())
+        srv = MCPServer(dispatcher=dispatcher)
+    else:
+        srv = server
     src = instream if instream is not None else _sys.stdin
     dst = outstream if outstream is not None else _sys.stdout
 
