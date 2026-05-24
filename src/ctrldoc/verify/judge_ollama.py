@@ -2,13 +2,16 @@
 
 The model is instructed to return one JSON object
 `{"passed": bool, "confidence": float, "reasoning": str}`. The
-response is robust to common drift modes (markdown fences,
-out-of-range confidence) — fences are stripped before parsing,
-confidence is clamped to `[0, 1]`. Kept in its own module so
-importing `ctrldoc.verify.judge` does not require the `ollama`
-SDK unless the caller wants the production backend.
+chat call carries `format="json"` so the Ollama daemon constrains
+sampling to a valid JSON grammar server-side — the model cannot
+emit a prose preamble around the payload even when the prompt
+drifts. The fence-stripping + bounds-clamping parser stays as
+defence-in-depth for older daemons that ignore the flag. Kept in
+its own module so importing `ctrldoc.verify.judge` does not
+require the `ollama` SDK unless the caller wants the production
+backend.
 
-SPEC-REF: §4.4 (verifier step 3 — LLM-as-judge, tier-1)
+SPEC-REF: §6.5 (probabilistic edges + calibration)
 """
 
 from __future__ import annotations
@@ -39,16 +42,17 @@ class OllamaLLMJudge:
         host: str = "http://127.0.0.1:11434",
         max_output_tokens: int = 256,
         temperature: float = 0.0,
+        client: Any | None = None,
     ) -> None:
         self._model = model
         self._host = host
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
-        self._client: Any | None = None
+        self._client: Any | None = client
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            import ollama
+            import ollama  # type: ignore[import-not-found]
 
             self._client = ollama.Client(host=self._host)
         return self._client
@@ -70,6 +74,7 @@ class OllamaLLMJudge:
         user_payload = f"CLAIM:\n{claim_body}\n\nEVIDENCE:\n{evidence_body}"
         response = client.chat(
             model=self._model,
+            format="json",
             options={
                 "temperature": self._temperature,
                 "num_predict": self._max_output_tokens,
