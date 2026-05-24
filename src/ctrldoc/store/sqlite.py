@@ -489,6 +489,79 @@ class SQLiteStore:
             if workspace_docs.intersection(concept.doc_ids):
                 yield concept
 
+    # --- v2 verdict ledger (§6.5 replayable verdicts) ---
+
+    def append_ledger_row(
+        self,
+        *,
+        workspace_id: str,
+        operation: str,
+        inputs_json: str,
+        output_json: str,
+        calibrated_confidence: float,
+        model_versions_json: str,
+        paraphrase_votes_json: str | None,
+        timestamp: str,
+    ) -> int:
+        """Insert one row into `verdict_ledger`; return the AUTOINCREMENT id.
+
+        Pure append — there is no companion `update_ledger_row` /
+        `delete_ledger_row` because §6.5 requires the ledger to be
+        replayable from the historical record. Schema-level absence of
+        a mutator is the cheapest enforcement of the append-only
+        contract.
+        """
+        with self._conn:
+            cursor = self._conn.execute(
+                """
+                INSERT INTO verdict_ledger
+                    (workspace_id, operation, inputs_json, output_json,
+                     calibrated_confidence, model_versions_json,
+                     paraphrase_votes_json, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    workspace_id,
+                    operation,
+                    inputs_json,
+                    output_json,
+                    calibrated_confidence,
+                    model_versions_json,
+                    paraphrase_votes_json,
+                    timestamp,
+                ),
+            )
+        row_id = cursor.lastrowid
+        if row_id is None:  # pragma: no cover — SQLite always assigns one.
+            raise RuntimeError("verdict_ledger insert did not return a rowid")
+        return int(row_id)
+
+    def get_ledger_row(self, entry_id: int) -> sqlite3.Row | None:
+        """Fetch one ledger row by AUTOINCREMENT id, or `None` if absent."""
+        row = self._conn.execute(
+            "SELECT * FROM verdict_ledger WHERE id = ?", (entry_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        assert isinstance(row, sqlite3.Row)
+        return row
+
+    def iter_ledger_rows(self, *, workspace_id: str | None = None) -> Iterator[sqlite3.Row]:
+        """Iterate ledger rows in append (== id) order.
+
+        `workspace_id` narrows the result set to one workspace; `None`
+        (the default) yields every row. SQLite's `ORDER BY id` is the
+        cheapest ordering: AUTOINCREMENT guarantees monotonicity, so
+        append order is the read order.
+        """
+        if workspace_id is None:
+            sql = "SELECT * FROM verdict_ledger ORDER BY id"
+            params: tuple[object, ...] = ()
+        else:
+            sql = "SELECT * FROM verdict_ledger WHERE workspace_id = ? ORDER BY id"
+            params = (workspace_id,)
+        yield from self._conn.execute(sql, params)
+
     # --- internals ---
 
     def _integrity_check(self) -> None:

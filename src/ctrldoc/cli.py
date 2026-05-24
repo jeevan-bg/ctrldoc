@@ -27,7 +27,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import typer
 
@@ -96,7 +96,19 @@ workspace_app = typer.Typer(
 )
 app.add_typer(workspace_app, name="workspace")
 
+ledger_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help=(
+        "Verdict ledger: list / show / replay. The ledger is the "
+        "append-only audit trail of every L4 verdict; replay re-runs a "
+        "recorded operation and checks the ±0.02 determinism gate."
+    ),
+)
+app.add_typer(ledger_app, name="ledger")
+
 _WORKSPACE_DB_FILENAME = "workspaces.db"
+_LEDGER_DB_FILENAME = "ledger.db"
 
 
 # --- shared helpers ---
@@ -1497,6 +1509,182 @@ def workspace_info(
         doc_ids=list(info.workspace.doc_ids),
         concept_count=info.concept_count,
     )
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+# --- ledger subcommands (§6.5, §11) ---
+
+
+def _ledger_store_path(config: Config) -> Path:
+    """Resolve the per-installation ledger DB.
+
+    The verdict ledger lives in its own SQLite file (separate from the
+    per-doc indexes and the workspace DB) so an auditor can ship a
+    single ``ledger.db`` snapshot without dragging unrelated artefacts.
+    The parent dir is created on demand — the first
+    ``ledger {list,show,replay}`` call bootstraps the file.
+    """
+    runs_path = Path(config.paths.runs_path)
+    runs_path.mkdir(parents=True, exist_ok=True)
+    return runs_path / _LEDGER_DB_FILENAME
+
+
+def _open_ledger_store(config: Config) -> SQLiteStore:
+    return SQLiteStore(_ledger_store_path(config))
+
+
+def _ledger_entry_payload(entry: object) -> dict[str, object]:
+    """Render one `LedgerEntry` into a JSON-safe dict for the CLI envelope."""
+    from ctrldoc.orch.ledger import LedgerEntry
+
+    assert isinstance(entry, LedgerEntry)
+    return {
+        "id": entry.id,
+        "workspace_id": entry.workspace_id,
+        "operation": entry.operation,
+        "inputs": dict(entry.inputs),
+        "output": dict(entry.output),
+        "calibrated_confidence": entry.calibrated_confidence,
+        "model_versions": dict(entry.model_versions),
+        "paraphrase_votes": (
+            dict(entry.paraphrase_votes) if entry.paraphrase_votes is not None else None
+        ),
+        "timestamp": entry.timestamp,
+    }
+
+
+def _render_ledger_list_markdown(*, rows: list[dict[str, object]]) -> str:
+    if not rows:
+        return "# ctrldoc — ledger list\n\n_(no entries yet)_\n"
+    header = "| ID | Workspace | Operation | Confidence | Timestamp |\n|---:|---|---|---:|---|\n"
+    body = "\n".join(
+        f"| {r['id']} | `{r['workspace_id']}` | `{r['operation']}` | "
+        f"{cast(float, r['calibrated_confidence']):.3f} | `{r['timestamp']}` |"
+        for r in rows
+    )
+    return f"# ctrldoc — ledger list\n\n{header}{body}\n"
+
+
+def _render_ledger_show_markdown(*, entry: dict[str, object]) -> str:
+    return (
+        "# ctrldoc — ledger show\n"
+        "\n"
+        f"- **ID**: {entry['id']}\n"
+        f"- **Workspace**: `{entry['workspace_id']}`\n"
+        f"- **Operation**: `{entry['operation']}`\n"
+        f"- **Calibrated confidence**: {cast(float, entry['calibrated_confidence']):.3f}\n"
+        f"- **Timestamp**: `{entry['timestamp']}`\n"
+    )
+
+
+def _render_ledger_replay_markdown(*, payload: dict[str, object]) -> str:
+    flag = "PASS" if payload["is_deterministic"] else "FAIL"
+    return (
+        "# ctrldoc — ledger replay\n"
+        "\n"
+        f"- **Entry ID**: {payload['entry_id']}\n"
+        f"- **Operation**: `{payload['operation']}`\n"
+        f"- **Persisted confidence**: {cast(float, payload['persisted_confidence']):.3f}\n"
+        f"- **Replayed confidence**: {cast(float, payload['replayed_confidence']):.3f}\n"
+        f"- **Delta**: {cast(float, payload['delta']):.4f} "
+        f"(tolerance {cast(float, payload['tolerance']):.2f})\n"
+        f"- **Determinism gate**: {flag}\n"
+    )
+
+
+@ledger_app.command("list")
+def ledger_list(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(
+        "",
+        "--workspace-id",
+        help="Narrow the result set to one workspace id; empty == all workspaces.",
+    ),
+) -> None:
+    """List ledger entries in append order, optionally filtered by workspace."""
+    from ctrldoc.orch.ledger import VerdictLedger
+
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    filter_id = workspace_id.strip() or None
+    with _open_ledger_store(config) as store:
+        ledger = VerdictLedger(store=store)
+        entries = ledger.list_entries(workspace_id=filter_id)
+    rows = [_ledger_entry_payload(entry) for entry in entries]
+    payload: dict[str, object] = {
+        "command": "ledger list",
+        "status": "ok",
+        "workspace_id": filter_id,
+        "entries": rows,
+    }
+    markdown = _render_ledger_list_markdown(rows=rows)
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+@ledger_app.command("show")
+def ledger_show(
+    ctx: typer.Context,
+    entry_id: int = typer.Argument(..., help="The ledger entry id to fetch."),
+) -> None:
+    """Show one ledger entry by id."""
+    from ctrldoc.orch.ledger import LedgerEntryNotFoundError, VerdictLedger
+
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    with _open_ledger_store(config) as store:
+        ledger = VerdictLedger(store=store)
+        try:
+            entry = ledger.get(entry_id)
+        except LedgerEntryNotFoundError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+    entry_payload = _ledger_entry_payload(entry)
+    payload: dict[str, object] = {
+        "command": "ledger show",
+        "status": "ok",
+        "entry": entry_payload,
+    }
+    markdown = _render_ledger_show_markdown(entry=entry_payload)
+    _emit_output(state, markdown=markdown, payload=payload)
+
+
+@ledger_app.command("replay")
+def ledger_replay(
+    ctx: typer.Context,
+    entry_id: int = typer.Argument(..., help="The ledger entry id to replay."),
+) -> None:
+    """Replay one ledger entry; report the ±0.02 determinism gate verdict.
+
+    The built-in replayer is the identity function over the persisted
+    `calibrated_confidence` — sufficient to round-trip the recorded
+    value and prove the gate plumbing end-to-end. Real per-op replayers
+    will plug in via the L4 tool dispatcher when the MCP server lands.
+    """
+    from ctrldoc.orch.ledger import LedgerEntryNotFoundError, VerdictLedger
+
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    with _open_ledger_store(config) as store:
+        ledger = VerdictLedger(store=store)
+        try:
+            entry = ledger.get(entry_id)
+        except LedgerEntryNotFoundError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        persisted = float(entry.calibrated_confidence)
+        outcome = ledger.replay(entry_id, replayer=lambda _inputs: persisted)
+    payload: dict[str, object] = {
+        "command": "ledger replay",
+        "status": "ok",
+        "entry_id": outcome.entry_id,
+        "operation": outcome.operation,
+        "persisted_confidence": outcome.persisted_confidence,
+        "replayed_confidence": outcome.replayed_confidence,
+        "delta": outcome.delta,
+        "tolerance": outcome.tolerance,
+        "is_deterministic": outcome.is_deterministic,
+    }
+    markdown = _render_ledger_replay_markdown(payload=payload)
     _emit_output(state, markdown=markdown, payload=payload)
 
 
