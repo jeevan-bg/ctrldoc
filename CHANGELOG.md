@@ -19,6 +19,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.entity_resolution` — entity-resolution
+  canonicalizer per SPEC §6.8. `EntityResolver` runs the standard
+  four-step ER recipe over a batch of `ConceptMention` rows:
+  embedding-cosine blocking (any `Embedder` backend, default
+  `tau_block = 0.85`, restricted to same-`PrimitiveTypeLiteral`
+  pairs); an `ERJudge` Protocol returning the four-class verdict
+  `equivalent` / `subsumes` / `subsumed_by` / `incomparable` per
+  surviving pair; union-find (smaller-root-wins, path-compressed)
+  over equivalence verdicts into canonical `Concept` rows whose
+  `canonical_name` is the most-frequent surface form among the
+  cluster's mentions (ties broken lexicographically); and
+  subsumption verdicts rewritten onto canonical-concept endpoints
+  and emitted as deduplicated `is_a` `TypedEdge` rows with
+  `source = "llm"`. `EntityResolution` returns the concept list,
+  the parallel mention-id cluster partition (so callers can
+  rebuild membership for scoring), the subsumption edges, and the
+  judge-call count for budget bookkeeping. `cluster_precision_recall`
+  is the pairwise scoring helper used to gate the §6.8 release
+  thresholds (`ER_PRECISION_THRESHOLD = 0.90`,
+  `ER_RECALL_THRESHOLD = 0.85`) — verified on an inline 12-mention
+  7-cluster gold fixture.
 - `ctrldoc.extract.tier2_nli` — Tier-2 NLI edge inferer per SPEC
   §6.5. `Tier2NLIEdgeInferer` consumes a list of universal `ClaimTuple`
   rows (the Tier-2 SVO extractor's output) and emits `TypedEdge` rows
