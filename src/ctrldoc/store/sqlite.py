@@ -72,6 +72,84 @@ CREATE TABLE IF NOT EXISTS mentions (
 
 CREATE INDEX IF NOT EXISTS idx_chunks_section ON chunks(section_id);
 CREATE INDEX IF NOT EXISTS idx_mentions_chunk ON mentions(chunk_id);
+
+-- v2 claim-graph substrate (SPEC §8). New tables are provisioned by
+-- the same idempotent CREATE-IF-NOT-EXISTS path; the schema_version
+-- bump (0.1.0 → 0.2.0) is what gates a v0.3 index from opening here.
+
+CREATE TABLE IF NOT EXISTS claims (
+    id TEXT PRIMARY KEY,
+    doc_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    subject TEXT,
+    predicate TEXT NOT NULL,
+    object TEXT,
+    polarity TEXT NOT NULL CHECK (polarity IN ('+', '-')),
+    modality TEXT,
+    qualifier_json TEXT NOT NULL DEFAULT '{}',
+    span_refs_json TEXT NOT NULL,
+    section_id TEXT NOT NULL,
+    concept_ids_json TEXT NOT NULL DEFAULT '[]',
+    typed_slots_json TEXT NOT NULL DEFAULT '{}',
+    confidence REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_claims_doc ON claims(doc_id);
+CREATE INDEX IF NOT EXISTS idx_claims_section ON claims(section_id);
+
+CREATE TABLE IF NOT EXISTS concepts (
+    id TEXT PRIMARY KEY,
+    canonical_name TEXT NOT NULL,
+    aliases_json TEXT NOT NULL DEFAULT '[]',
+    primitive_type TEXT NOT NULL,
+    mention_claim_ids_json TEXT NOT NULL DEFAULT '[]',
+    doc_ids_json TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS typed_edges (
+    src_id TEXT NOT NULL,
+    dst_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    raw_score REAL NOT NULL,
+    citations_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    paraphrase_votes INTEGER,
+    PRIMARY KEY (src_id, dst_id, type)
+);
+CREATE INDEX IF NOT EXISTS idx_edges_src ON typed_edges(src_id, type);
+CREATE INDEX IF NOT EXISTS idx_edges_dst ON typed_edges(dst_id, type);
+
+CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    doc_ids_json TEXT NOT NULL,
+    induced_schema_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cross_doc_edges (
+    workspace_id TEXT NOT NULL,
+    src_claim_id TEXT NOT NULL,
+    dst_claim_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    raw_score REAL NOT NULL,
+    citations_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, src_claim_id, dst_claim_id, type)
+);
+
+CREATE TABLE IF NOT EXISTS verdict_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    inputs_json TEXT NOT NULL,
+    output_json TEXT NOT NULL,
+    calibrated_confidence REAL NOT NULL,
+    model_versions_json TEXT NOT NULL,
+    paraphrase_votes_json TEXT,
+    timestamp TEXT NOT NULL
+);
 """
 
 
@@ -145,6 +223,13 @@ class SQLiteStore:
             self._conn.execute("DELETE FROM sections")
             self._conn.execute("DELETE FROM entities")
             self._conn.execute("DELETE FROM mentions")
+            # v2 claim-graph substrate.
+            self._conn.execute("DELETE FROM claims")
+            self._conn.execute("DELETE FROM concepts")
+            self._conn.execute("DELETE FROM typed_edges")
+            self._conn.execute("DELETE FROM workspaces")
+            self._conn.execute("DELETE FROM cross_doc_edges")
+            self._conn.execute("DELETE FROM verdict_ledger")
 
     # --- protocol ---
 
