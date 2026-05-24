@@ -198,17 +198,37 @@ def test_typed_edges_indexes(tmp_path: Path) -> None:
 def test_workspaces_table_columns(tmp_path: Path) -> None:
     with SQLiteStore(_db(tmp_path)) as store:
         cols = _columns(store, "workspaces")
+    # `provenance_json` carries the §7 `Provenance` record the in-memory
+    # `Workspace` model requires; persisted alongside the §8 base columns
+    # so create / list / info round-trips reconstruct the full Pydantic shape.
     assert set(cols) == {
         "id",
         "name",
         "doc_ids_json",
         "induced_schema_json",
+        "provenance_json",
         "created_at",
     }
     assert cols["id"]["pk"] == 1
     assert cols["name"]["notnull"]
     assert cols["doc_ids_json"]["notnull"]
     assert cols["created_at"]["notnull"]
+
+
+def test_workspaces_name_is_unique(tmp_path: Path) -> None:
+    """`WorkspaceManager.create` rejects duplicate names; the DB enforces it too."""
+    import sqlite3
+
+    with SQLiteStore(_db(tmp_path)) as store:
+        store._conn.execute(
+            "INSERT INTO workspaces (id, name, doc_ids_json, created_at) "
+            "VALUES ('ws-1', 'audit-2026', '[]', '2026-05-24T00:00:00Z')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            store._conn.execute(
+                "INSERT INTO workspaces (id, name, doc_ids_json, created_at) "
+                "VALUES ('ws-2', 'audit-2026', '[]', '2026-05-24T00:00:01Z')"
+            )
 
 
 # --- cross_doc_edges ---
