@@ -20,6 +20,10 @@ SPEC-REF: §11 (MCP Server), §6.10 (tool surface)
 
 from __future__ import annotations
 
+from ctrldoc.mcp.handlers import (
+    MCPHandlerDeps,
+    register_default_handlers,
+)
 from ctrldoc.mcp.server import (
     MCP_PROTOCOL_VERSION,
     MCPError,
@@ -32,6 +36,8 @@ __all__ = [
     "MCP_PROTOCOL_VERSION",
     "MCPError",
     "MCPErrorCode",
+    "MCPHandlerDeps",
     "MCPServer",
+    "register_default_handlers",
     "serve_stdio",
 ]
