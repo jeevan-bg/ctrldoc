@@ -14,13 +14,13 @@ The current build pointer, active roadmap, and compact spec are loaded automatic
 @.ctrldoc/ROADMAP.md
 @docs/SPEC_DIGEST.md
 
-## Architecture (parent + sub-agent)
+## Architecture (parent + sub-agent, no sleep)
 
-The autonomous build runs as **one parent orchestrator session that spawns one sub-agent per slice**, not as a same-session loop. Each sub-agent runs in **fresh, isolated context** and returns a 2-line summary. The parent's accumulated context grows by ~50 tokens per slice, so the parent stays viable across 100+ slices.
+The autonomous build runs as **one parent orchestrator session that spawns one sub-agent per slice**, slice-after-slice with no sleep between them. Each sub-agent runs in **fresh, isolated context** and returns a 2-line summary. The parent's accumulated context grows by ~50 tokens per slice, so the parent stays viable across 100+ slices.
 
-- **Parent** follows `.ctrldoc/LOOP_PARENT.md` — 5 steps: pre-flight → identify slice → spawn sub-agent → check stop conditions → ScheduleWakeup(90s).
+- **Parent** follows `.ctrldoc/LOOP_PARENT.md` — 5 steps: pre-flight → fresh-read state → spawn sub-agent → check stop conditions → immediately loop to Step 1. No `ScheduleWakeup`, no sleep; Anthropic's API backoff handles per-minute rate limits inside each sub-agent.
 - **Sub-agent** follows `.ctrldoc/LOOP_PROMPT.md` — full slice protocol (read tier 2, TDD, commit, hygiene), then returns a 2-line summary.
-- **Sleep cadence: 90s** — for rate-limit pacing only. Context freshness comes from sub-agent isolation, not from sleep.
+- **Stale-state discipline:** the parent re-reads `STATE.md` / `ROADMAP.md` fresh at Step 2 every iteration. The auto-loaded copy from session start is stale after the first sub-agent updates them.
 
 ## Hard rules (violations are bugs)
 
