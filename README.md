@@ -31,6 +31,17 @@ pip install -e ".[dev,index]"
 
 Requirements: Python 3.11+, macOS or Linux. For local LLM backends (optional): [Ollama](https://ollama.com) with `ollama pull bge-m3 qwen2.5:7b-instruct-q4_K_M`. For Anthropic-backed operations: set `ANTHROPIC_API_KEY` (or place it in a `.env` file at the repo root — never commit it).
 
+### Recommended: Homebrew Python 3.11 + full extras
+
+For the full surface (claim extraction with spaCy, NER with GLiNER, sqlite-vec / sqlite-fts5 indexes), install under **Homebrew Python 3.11** (`brew install python@3.11`). The python.org Framework builds of 3.12+ ship without the sqlite loadable-extension support that `sqlite-vec` needs at runtime, and several of the optional ingest dependencies do not yet have Python 3.13/3.14 wheels. Pinning the venv to Homebrew 3.11 gives a `ctrldoc` console-script with a Python 3.11 shebang that just works:
+
+```bash
+python3.11 -m venv .venv && source .venv/bin/activate
+python3.11 -m pip install -e ".[dev,index,ingest]"
+```
+
+After install, `head -1 $(which ctrldoc)` should print a path ending in `/python3.11`. If it points anywhere else, the wrong Python was on `PATH` when the venv was created — recreate the venv with `python3.11 -m venv` explicitly.
+
 ## Quickstart
 
 The repo ships a synthetic gold document at `tests/fixtures/synthetic/gold_doc.md` so you can verify the install without any LLM credentials.

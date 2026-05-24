@@ -150,7 +150,7 @@ def _resolve_optional_ner() -> NERTagger:
     try:
         # Touch `gliner` here so we fall through to the stub when the
         # package itself is missing (GLiNERTagger lazy-imports it).
-        import gliner  # type: ignore[import-not-found] # noqa: F401
+        import gliner  # type: ignore[import-untyped,import-not-found,unused-ignore] # noqa: F401
 
         from ctrldoc.ingest.ner_gliner import GLiNERTagger
 
