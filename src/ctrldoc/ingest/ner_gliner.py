@@ -25,7 +25,7 @@ class GLiNERTagger:
         self,
         *,
         model_name: str = "urchade/gliner_small-v2.1",
-        score_threshold: float = 0.5,
+        score_threshold: float = 0.3,
     ) -> None:
         self._model_name = model_name
         self._score_threshold = score_threshold
