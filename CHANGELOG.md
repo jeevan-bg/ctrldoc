@@ -190,6 +190,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   or emit a parseable summary; prints a per-substrate `OK | FAIL`
   table plus the raw JSON summaries. Intended as a CI wiring check
   for the v1 eval substrates.
+- `ctrldoc.ops.cross_doc_edges` — L2.5 cross-doc edge inferer per SPEC
+  §6.7. `CrossDocEdgeInferer` bridges N workspace member docs with
+  `aligned_with`, `entails_across`, and `contradicts_across` typed
+  edges produced by an NLI scorer. For every ordered pair of distinct
+  member docs `(A, B)` the inferer picks the top-`k` target-doc
+  candidates per source claim via deterministic token-overlap Jaccard,
+  then issues exactly one NLI call per surviving pair through the same
+  `NLIScorer` Protocol that `Tier2NLIEdgeInferer` uses. Threshold
+  ladder: contradiction or entailment at or above `0.70` emits the hard
+  cross-doc edge; entailment in `[0.50, 0.70)` emits the soft
+  `aligned_with` band so paraphrase-style equivalences surface without
+  being mis-labelled as strict entailment. Cost contract: scorer calls
+  grow linearly at `k * |A|` per ordered doc pair, i.e.
+  `k * sum(|d|) * (n_docs - 1)` total, never quadratic. Endpoint
+  identity reuses the persisted `Claim.id` verbatim so the
+  optimal-transport engine (Phase 18) reads back the same ids it loaded
+  from the claim store; emitted edges sort by
+  `(type, src_id, dst_id)` for byte-stable diffs.
 
 ## [0.3.0] — 2026-05-23
 
