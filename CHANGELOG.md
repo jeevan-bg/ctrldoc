@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Real-doc shakedown corpus + smoke script (SPEC §16). A new
+  `tests/fixtures/real_docs/` directory ships a hand-built corpus
+  spanning every §16 doc-type axis — a system specification
+  (`spec_lighthouse.md`), a service-terms excerpt (`legal_terms.md`),
+  an academic-style writeup (`academic_paper.md`), an explanatory
+  tutorial (`educational_guide.md`), a short narrative
+  (`narrative.md`), and a spec-vs-impl pair (`pair_spec.md` +
+  `pair_impl.md`, linked by `pair_id: tideline`). `MANIFEST.yaml`
+  declares each row's `doc_id`, `type`, `role`, `pair_id`, `path`,
+  `title`, and `summary`, and is the oracle every downstream test
+  reads instead of hard-coding paths. `scripts/real_doc_smoke.sh`
+  drives every entry through the v1 substrate on the heuristic
+  profile (no LLM, no Ollama, no network): the Python driver
+  `ctrldoc.eval.real_doc_smoke` runs the full L0 ingest, the
+  deterministic anomaly-scan battery, a determinism rerun (re-ingest
+  every doc into a sibling tree and assert byte-identical signature
+  hashes), and a workspace build from the spec-vs-impl pair. The
+  driver writes a single `summary.json` the script then validates and
+  surfaces as a per-doc table. Hermetic by construction, CI-safe,
+  ~20 seconds locally.
 - `ctrldoc.mcp` + `ctrldoc mcp serve` — Model Context Protocol server
   exposing the §6.10 13-tool surface over stdio JSON-RPC 2.0 (SPEC
   §11). `MCPServer` owns the protocol layer: envelope parsing, the
