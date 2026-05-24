@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ctrldoc.tokenizer import TOKENIZER_NAME
 
-SCHEMA_VERSION: Final[str] = "0.1.0"
+SCHEMA_VERSION: Final[str] = "0.2.0"
 
 
 def new_run_id() -> str:
