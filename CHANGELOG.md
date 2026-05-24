@@ -19,6 +19,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `ctrldoc.extract.schema_proposer` — L0 schema proposer per SPEC §6.4
+  step 2. `max_entropy_sample(chunks, embeddings, *, k)` runs greedy
+  farthest-point selection on the embedding cloud: the seed is the
+  chunk whose embedding is furthest from the cloud's centroid, and each
+  subsequent pick maximises the minimum cosine distance to anything
+  already picked. Ties break by input ordinal so the output is
+  byte-stable across runs, length-mismatched inputs raise, and the
+  function returns at most `min(k, len(chunks))` (empty input → empty
+  output). `SchemaProposer.propose(chunks, doc_id)` wires the
+  8-to-12-chunk sample through one batched `TaskClient.call` whose
+  system prompt enumerates the closed 10-element `PrimitiveTypeLiteral`
+  library — `Entity` / `Event` / `Process` / `Property` / `Quantity` /
+  `Definition` / `Assertion` / `Obligation` / `Citation` / `Relation` —
+  and whose user message carries only the sampled excerpts plus the doc
+  id, never the full document. The returned JSON is parsed into a
+  `SchemaProposal` of `TypedNodeSpec` and `TypedEdgeSpec` rows that
+  reject unknown primitives and blank fields at the Pydantic boundary
+  so a hallucinated primitive raises before the proposal reaches the
+  workspace cache. `dump_schema_yaml(proposal, path)` and
+  `load_schema_yaml(path)` round-trip the proposal as deterministic
+  block-style YAML (one mapping of `nodes:` + `edges:`, each holding
+  either `[]` or single-line key/value entries with double-quoted
+  scalars; parent directories are created on dump). The dumper uses the
+  stdlib only — no new project dependency — so the cache key (file
+  hash) is reproducible across runs and environments and sibling docs
+  in the same workspace can reuse the cached per-doc schema without
+  paying for a second LLM round-trip.
 - `ctrldoc.extract.galois` — Galois subsumption lattice over the
   universal claim tuple per SPEC §6.3. `claim_subsumption(left, right)`
   returns one of `equivalent` / `subsumes` / `subsumed_by` /
