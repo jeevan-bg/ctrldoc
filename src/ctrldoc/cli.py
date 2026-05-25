@@ -1725,6 +1725,545 @@ def mcp_serve(
     serve_stdio()
 
 
+# --- v1 ops passthroughs (§9 CLI surface over §6.10 tool dispatcher) ---
+
+
+graph_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Graph operations: show / query / traverse over the typed claim graph.",
+)
+app.add_typer(graph_app, name="graph")
+
+schema_app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Induced-schema operations: show one doc's schema; pin a workspace's schema from a doc.",
+)
+app.add_typer(schema_app, name="schema")
+
+
+def _build_dispatcher(config: Config) -> object:
+    """Fresh `ToolDispatcher` wired with the per-installation handler floor.
+
+    Mirrors `mcp.server.serve_stdio`'s wiring: `optimal_transport` and
+    `calibration` always wire; `subsumes` / `get_claim` /
+    `lookup_concept` / `traverse` wire if the per-doc indexes under
+    `<runs_path>/indexes/` are openable; `coverage` / `compare` /
+    `merge` / `list_check` / `entails` / `qa` / `map` stay unwired
+    because their NLI / LLM / per-doc-edges deps aren't constructable
+    from the bare CLI (those wire up in later op-routing slices).
+    """
+    from ctrldoc.mcp.handlers import build_store_backed_deps, register_default_handlers
+    from ctrldoc.orch.tools import ToolDispatcher
+
+    dispatcher = ToolDispatcher()
+    deps = build_store_backed_deps(runs_path=Path(config.paths.runs_path))
+    register_default_handlers(dispatcher=dispatcher, deps=deps)
+    return dispatcher
+
+
+def _dispatch_or_stub(
+    *,
+    state: CliState,
+    command: str,
+    tool_name: str,
+    raw_input: dict[str, object],
+    render_ok: object,
+) -> None:
+    """Run the dispatcher; on `ToolNotImplementedError` emit a structured stub.
+
+    `render_ok(result_model)` returns a `(markdown, payload_dict)` tuple
+    for the success path. Failure path emits `status: "not_implemented"`
+    with the inputs echoed so an operator can see which deps were
+    missing; markdown carries a `# ctrldoc — <command>` heading plus a
+    short "not implemented" sentence so the user-facing rendering is
+    explicit (and never silently no-ops, per §13 non-negotiable 3).
+    """
+    from ctrldoc.orch.tools import ToolNotImplementedError
+
+    dispatcher = _build_dispatcher(_load_config(state.config_path))
+    try:
+        result = dispatcher.dispatch(tool_name=tool_name, raw_input=raw_input)  # type: ignore[attr-defined]
+    except ToolNotImplementedError as exc:
+        payload: dict[str, object] = {
+            "command": command,
+            "status": "not_implemented",
+            "tool_name": tool_name,
+            "inputs": raw_input,
+            "reason": str(exc),
+        }
+        markdown = (
+            f"# ctrldoc — {command}\n\n"
+            f"_Tool `{tool_name}` is not implemented in this profile._\n\n"
+            f"- **Reason**: {exc}\n"
+        )
+        _emit_output(state, markdown=markdown, payload=payload)
+        return
+    markdown, ok_payload = render_ok(result)  # type: ignore[operator]
+    _emit_output(state, markdown=markdown, payload=ok_payload)
+
+
+# --- compare ---
+
+
+@app.command("compare")
+def compare(
+    ctx: typer.Context,
+    workspace_id: str = typer.Argument(..., help="The workspace id whose docs to compare."),
+    doc_ids: list[str] = typer.Argument(
+        ..., help="Two or more doc ids inside the workspace to compare."
+    ),
+) -> None:
+    """Symmetric N-doc compare: strengths / weaknesses / gaps over the workspace."""
+    if len(doc_ids) < 2:
+        typer.echo("error: compare requires at least two doc ids", err=True)
+        raise typer.Exit(code=2)
+    state: CliState = ctx.obj
+    raw_input: dict[str, object] = {"workspace_id": workspace_id, "doc_ids": list(doc_ids)}
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        report = result.report  # type: ignore[attr-defined]
+        payload: dict[str, object] = {
+            "command": "compare",
+            "status": "ok",
+            "tool_name": "compare",
+            "workspace_id": report.workspace_id,
+            "doc_ids": list(report.doc_ids),
+            "rows": [dict(r) for r in report.rows],
+        }
+        md = (
+            f"# ctrldoc — compare\n\n"
+            f"- **Workspace**: `{report.workspace_id}`\n"
+            f"- **Docs**: {', '.join(f'`{d}`' for d in report.doc_ids)}\n"
+            f"- **Verdict rows**: {len(report.rows)}\n"
+        )
+        return md, payload
+
+    _dispatch_or_stub(
+        state=state,
+        command="compare",
+        tool_name="compare",
+        raw_input=raw_input,
+        render_ok=_render_ok,
+    )
+
+
+# --- coverage ---
+
+
+@app.command("coverage")
+def coverage(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(..., "--workspace", help="Workspace id."),
+    target_doc_id: str = typer.Option(..., "--target", help="Target doc id."),
+    source_doc_id: str = typer.Option(..., "--source", help="Source doc id."),
+) -> None:
+    """Per-claim coverage verdicts for `target` against `source` inside the workspace."""
+    state: CliState = ctx.obj
+    raw_input: dict[str, object] = {
+        "workspace_id": workspace_id,
+        "target_doc_id": target_doc_id,
+        "source_doc_id": source_doc_id,
+    }
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        report = result.report  # type: ignore[attr-defined]
+        payload: dict[str, object] = {
+            "command": "coverage",
+            "status": "ok",
+            "tool_name": "coverage",
+            "report": json.loads(report.model_dump_json()),
+        }
+        md = (
+            f"# ctrldoc — coverage\n\n"
+            f"- **Target**: `{target_doc_id}`\n"
+            f"- **Source**: `{source_doc_id}`\n"
+            f"- **Workspace**: `{workspace_id}`\n"
+        )
+        return md, payload
+
+    _dispatch_or_stub(
+        state=state,
+        command="coverage",
+        tool_name="coverage",
+        raw_input=raw_input,
+        render_ok=_render_ok,
+    )
+
+
+# --- merge ---
+
+
+@app.command("merge")
+def merge(
+    ctx: typer.Context,
+    doc_ids: list[str] = typer.Argument(..., help="Doc ids inside the workspace to merge."),
+    workspace_id: str = typer.Option(..., "--workspace", help="Workspace id."),
+    output_path: Path = typer.Option(..., "--output", help="Where to write the merged doc."),
+) -> None:
+    """Lossless N-doc synthesis under the workspace; every input claim → one output cluster."""
+    state: CliState = ctx.obj
+    raw_input: dict[str, object] = {
+        "workspace_id": workspace_id,
+        "doc_ids": list(doc_ids),
+        # `output_path` is a CLI concern (where to write the merged file)
+        # — not part of the tool surface schema, surfaced in the
+        # envelope so the operator can see where the file would land.
+        "output_path": str(output_path),
+    }
+    # Drop CLI-only field before dispatcher validation (MergeInput rejects extras).
+    dispatch_input = {k: v for k, v in raw_input.items() if k != "output_path"}
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        merged = result.merged  # type: ignore[attr-defined]
+        payload: dict[str, object] = {
+            "command": "merge",
+            "status": "ok",
+            "tool_name": "merge",
+            "workspace_id": merged.workspace_id,
+            "cluster_ids": list(merged.cluster_ids),
+            "representative_claim_ids": list(merged.representative_claim_ids),
+            "output_path": str(output_path),
+        }
+        md = (
+            f"# ctrldoc — merge\n\n"
+            f"- **Workspace**: `{merged.workspace_id}`\n"
+            f"- **Clusters**: {len(merged.cluster_ids)}\n"
+            f"- **Output**: `{output_path}`\n"
+        )
+        return md, payload
+
+    # _dispatch_or_stub stamps `inputs` from `raw_input`; route the
+    # full CLI-shaped dict in so the stub envelope shows `output_path`.
+    from ctrldoc.orch.tools import ToolNotImplementedError
+
+    dispatcher = _build_dispatcher(_load_config(state.config_path))
+    try:
+        result = dispatcher.dispatch(tool_name="merge", raw_input=dispatch_input)  # type: ignore[attr-defined]
+    except ToolNotImplementedError as exc:
+        stub_payload: dict[str, object] = {
+            "command": "merge",
+            "status": "not_implemented",
+            "tool_name": "merge",
+            "inputs": raw_input,
+            "reason": str(exc),
+        }
+        markdown = (
+            "# ctrldoc — merge\n\n"
+            f"_Tool `merge` is not implemented in this profile._\n\n"
+            f"- **Reason**: {exc}\n"
+        )
+        _emit_output(state, markdown=markdown, payload=stub_payload)
+        return
+    markdown, ok_payload = _render_ok(result)
+    _emit_output(state, markdown=markdown, payload=ok_payload)
+
+
+# --- list-check ---
+
+
+@app.command("list-check")
+def list_check(
+    ctx: typer.Context,
+    list_path: Path = typer.Argument(..., help="Markdown list file: one bullet per item."),
+    doc_id: str = typer.Argument(..., help="Doc id to check the list against."),
+) -> None:
+    """Per-item verdict of a Markdown bullet list against one doc."""
+    _require_input_path(list_path)
+    state: CliState = ctx.obj
+    items: list[dict[str, str]] = []
+    for idx, raw_line in enumerate(list_path.read_text(encoding="utf-8").splitlines()):
+        stripped = raw_line.lstrip()
+        if not stripped or stripped[0] not in "-*":
+            continue
+        text = stripped[1:].strip()
+        if text:
+            items.append({"item_id": f"item-{idx:04d}", "text": text})
+    if not items:
+        typer.echo("error: no bullet items parsed from list file", err=True)
+        raise typer.Exit(code=2)
+    raw_input: dict[str, object] = {"items": items, "doc_id": doc_id}
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        verdicts = [json.loads(v.model_dump_json()) for v in result.verdicts]  # type: ignore[attr-defined]
+        payload: dict[str, object] = {
+            "command": "list-check",
+            "status": "ok",
+            "tool_name": "list_check",
+            "doc_id": doc_id,
+            "verdicts": verdicts,
+        }
+        md = f"# ctrldoc — list-check\n\n- **Doc**: `{doc_id}`\n- **Items**: {len(verdicts)}\n"
+        return md, payload
+
+    _dispatch_or_stub(
+        state=state,
+        command="list-check",
+        tool_name="list_check",
+        raw_input=raw_input,
+        render_ok=_render_ok,
+    )
+
+
+# --- graph show / query / traverse ---
+
+
+@graph_app.command("show")
+def graph_show(
+    ctx: typer.Context,
+    doc_id: str = typer.Argument(..., help="Doc id to render."),
+) -> None:
+    """Render the doc's typed-edge graph as Mermaid plus node/edge bookkeeping."""
+    state: CliState = ctx.obj
+    raw_input: dict[str, object] = {"doc_id": doc_id, "filters": {}}
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        payload: dict[str, object] = {
+            "command": "graph show",
+            "status": "ok",
+            "tool_name": "map",
+            "doc_id": doc_id,
+            "mermaid": result.mermaid,  # type: ignore[attr-defined]
+            "node_ids": list(result.node_ids),  # type: ignore[attr-defined]
+            "edge_count": result.edge_count,  # type: ignore[attr-defined]
+        }
+        md = (
+            f"# ctrldoc — graph show\n\n"
+            f"- **Doc**: `{doc_id}`\n"
+            f"- **Nodes**: {len(result.node_ids)}\n"  # type: ignore[attr-defined]
+            f"- **Edges**: {result.edge_count}\n\n"  # type: ignore[attr-defined]
+            "```mermaid\n"
+            f"{result.mermaid}\n"  # type: ignore[attr-defined]
+            "```\n"
+        )
+        return md, payload
+
+    _dispatch_or_stub(
+        state=state,
+        command="graph show",
+        tool_name="map",
+        raw_input=raw_input,
+        render_ok=_render_ok,
+    )
+
+
+@graph_app.command("query")
+def graph_query(
+    ctx: typer.Context,
+    doc_id: str = typer.Argument(..., help="Doc id whose concept lattice to query."),
+    concept: str = typer.Option(..., "--concept", help="Canonical concept name to look up."),
+) -> None:
+    """Look up a canonical concept name in the doc's concept lattice."""
+    state: CliState = ctx.obj
+    # The `lookup_concept` tool is doc-agnostic at the dispatcher
+    # layer — `doc_id` is kept on the envelope for traceability but
+    # never routed into the strict Pydantic input.
+    raw_input: dict[str, object] = {"name": concept}
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        payload: dict[str, object] = {
+            "command": "graph query",
+            "status": "ok",
+            "tool_name": "lookup_concept",
+            "doc_id": doc_id,
+            "concept": concept,
+            "concept_id": result.concept_id,  # type: ignore[attr-defined]
+        }
+        md = (
+            f"# ctrldoc — graph query\n\n"
+            f"- **Doc**: `{doc_id}`\n"
+            f"- **Concept**: `{concept}`\n"
+            f"- **Resolved id**: `{result.concept_id}`\n"  # type: ignore[attr-defined]
+        )
+        return md, payload
+
+    _dispatch_or_stub(
+        state=state,
+        command="graph query",
+        tool_name="lookup_concept",
+        raw_input=raw_input,
+        render_ok=_render_ok,
+    )
+
+
+@graph_app.command("traverse")
+def graph_traverse(
+    ctx: typer.Context,
+    node_id: str = typer.Argument(..., help="Starting node id (claim or concept)."),
+    edge_type: str = typer.Option(..., "--edge-type", help="Typed edge label to follow."),
+    direction: str = typer.Option("forward", "--direction", help="`forward` / `reverse` / `both`."),
+    hops: int = typer.Option(1, "--hops", min=1, max=10, help="Number of hops to walk (1..10)."),
+) -> None:
+    """Walk the typed-edge graph from `node_id` along one edge type."""
+    state: CliState = ctx.obj
+    raw_input: dict[str, object] = {
+        "node_id": node_id,
+        "edge_type": edge_type,
+        "direction": direction,
+        "hops": hops,
+    }
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        payload: dict[str, object] = {
+            "command": "graph traverse",
+            "status": "ok",
+            "tool_name": "traverse",
+            "node_id": node_id,
+            "edge_type": edge_type,
+            "direction": direction,
+            "hops": hops,
+            "node_ids": list(result.node_ids),  # type: ignore[attr-defined]
+        }
+        md = (
+            f"# ctrldoc — graph traverse\n\n"
+            f"- **From**: `{node_id}`\n"
+            f"- **Edge type**: `{edge_type}` ({direction}, hops={hops})\n"
+            f"- **Reached**: {len(result.node_ids)} node(s)\n"  # type: ignore[attr-defined]
+        )
+        return md, payload
+
+    from ctrldoc.orch.tools import ToolNotImplementedError, ToolValidationError
+
+    dispatcher = _build_dispatcher(_load_config(state.config_path))
+    try:
+        result = dispatcher.dispatch(tool_name="traverse", raw_input=raw_input)  # type: ignore[attr-defined]
+    except ToolValidationError as exc:
+        typer.echo(f"error: invalid traverse input — {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except ToolNotImplementedError as exc:
+        stub_payload: dict[str, object] = {
+            "command": "graph traverse",
+            "status": "not_implemented",
+            "tool_name": "traverse",
+            "inputs": raw_input,
+            "reason": str(exc),
+        }
+        markdown = (
+            "# ctrldoc — graph traverse\n\n"
+            f"_Tool `traverse` is not implemented in this profile._\n\n"
+            f"- **Reason**: {exc}\n"
+        )
+        _emit_output(state, markdown=markdown, payload=stub_payload)
+        return
+    markdown, ok_payload = _render_ok(result)
+    _emit_output(state, markdown=markdown, payload=ok_payload)
+
+
+# --- schema show / pin ---
+
+
+def _doc_schema_path(config: Config, doc_id: str) -> Path:
+    """Where the induced-schema YAML lives for one doc id."""
+    return _per_doc_index_dir(config, doc_id) / f"{doc_id}.schema.yaml"
+
+
+def _workspace_schema_path(config: Config, workspace_id: str) -> Path:
+    """Where the pinned-schema YAML lives for one workspace id."""
+    runs_path = Path(config.paths.runs_path)
+    return runs_path / "workspaces" / workspace_id / "schema.yaml"
+
+
+@schema_app.command("show")
+def schema_show(
+    ctx: typer.Context,
+    doc_id: str = typer.Argument(..., help="Doc id whose induced schema to dump."),
+) -> None:
+    """Print the induced-schema YAML for one doc."""
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    schema_path = _doc_schema_path(config, doc_id)
+    if not schema_path.exists():
+        typer.echo(f"error: no induced schema for doc {doc_id!r} at {schema_path}", err=True)
+        raise typer.Exit(code=2)
+    yaml_text = schema_path.read_text(encoding="utf-8")
+    payload: dict[str, object] = {
+        "command": "schema show",
+        "status": "ok",
+        "doc_id": doc_id,
+        "schema_path": str(schema_path),
+        "yaml": yaml_text,
+    }
+    md = (
+        f"# ctrldoc — schema show\n\n"
+        f"- **Doc**: `{doc_id}`\n"
+        f"- **Path**: `{schema_path}`\n\n"
+        "```yaml\n"
+        f"{yaml_text}\n"
+        "```\n"
+    )
+    _emit_output(state, markdown=md, payload=payload)
+
+
+@schema_app.command("pin")
+def schema_pin(
+    ctx: typer.Context,
+    workspace_id: str = typer.Option(..., "--workspace", help="Workspace id to pin into."),
+    from_doc: str = typer.Option(..., "--from", help="Source doc id to copy the schema from."),
+) -> None:
+    """Pin one doc's induced schema as the workspace's authoritative schema."""
+    state: CliState = ctx.obj
+    config = _load_config(state.config_path)
+    src = _doc_schema_path(config, from_doc)
+    if not src.exists():
+        typer.echo(f"error: no induced schema for doc {from_doc!r} at {src}", err=True)
+        raise typer.Exit(code=2)
+    dst = _workspace_schema_path(config, workspace_id)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    payload: dict[str, object] = {
+        "command": "schema pin",
+        "status": "ok",
+        "workspace_id": workspace_id,
+        "from_doc": from_doc,
+        "source_path": str(src),
+        "pinned_path": str(dst),
+    }
+    md = (
+        f"# ctrldoc — schema pin\n\n"
+        f"- **Workspace**: `{workspace_id}`\n"
+        f"- **From**: `{from_doc}`\n"
+        f"- **Pinned at**: `{dst}`\n"
+    )
+    _emit_output(state, markdown=md, payload=payload)
+
+
+# --- calibration ---
+
+
+@app.command("calibration")
+def calibration(ctx: typer.Context) -> None:
+    """Surface shipped ECE-per-backend (§6.5 release gate)."""
+    state: CliState = ctx.obj
+
+    def _render_ok(result: object) -> tuple[str, dict[str, object]]:
+        payload: dict[str, object] = {
+            "command": "calibration",
+            "status": "ok",
+            "tool_name": "calibration",
+            "ece_per_backend": dict(result.ece_per_backend),  # type: ignore[attr-defined]
+            "sample_sizes": dict(result.sample_sizes),  # type: ignore[attr-defined]
+        }
+        if not result.ece_per_backend:  # type: ignore[attr-defined]
+            body = "_(no backends fit yet)_\n"
+        else:
+            rows = "\n".join(
+                f"| `{b}` | {ece:.4f} | {result.sample_sizes.get(b, 0)} |"  # type: ignore[attr-defined]
+                for b, ece in sorted(result.ece_per_backend.items())  # type: ignore[attr-defined]
+            )
+            body = f"| Backend | ECE | Samples |\n|---|---:|---:|\n{rows}\n"
+        md = f"# ctrldoc — calibration\n\n{body}"
+        return md, payload
+
+    _dispatch_or_stub(
+        state=state,
+        command="calibration",
+        tool_name="calibration",
+        raw_input={},
+        render_ok=_render_ok,
+    )
+
+
 def main() -> None:
     """Entry point for ``python -m ctrldoc``."""
     app()
