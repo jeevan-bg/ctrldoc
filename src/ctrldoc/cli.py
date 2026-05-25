@@ -121,6 +121,21 @@ app.add_typer(mcp_app, name="mcp")
 _WORKSPACE_DB_FILENAME = "workspaces.db"
 _LEDGER_DB_FILENAME = "ledger.db"
 
+_HEURISTIC_CONFIDENCE = 0.9
+"""§6.5 prior surfaced to the ledger for ops that emit a deterministic
+verdict with no per-item confidence (`review`, `compare`, `merge`).
+Mirrors `tier2_nli.HEURISTIC_CONFIDENCE` so the substrate uses one
+number for "structurally certain, not LLM-graded" verdicts.
+"""
+
+_DEFAULT_LEDGER_WORKSPACE_ID = "-"
+"""Sentinel workspace_id used by single-doc commands (`qa`, `audit`,
+`review`, `map`) that do not run under a named workspace. Keeping the
+column non-null preserves the §8 schema contract and lets `ledger list
+--workspace-id <id>` partition cleanly between workspaced and
+non-workspaced rows.
+"""
+
 
 # --- shared helpers ---
 
@@ -275,6 +290,89 @@ def _emit_output(state: CliState, *, markdown: str, payload: dict[str, object]) 
         typer.echo(json.dumps(payload, indent=2))
         return
     typer.echo(markdown)
+
+
+# --- ledger append helpers (§6.5 verdict ledger wiring) ---
+
+
+def _model_versions_for_profile(profile: Profile) -> dict[str, str]:
+    """Build the `{role: model_id}` rollup the ledger persists for a verdict.
+
+    The rollup reflects the active backend profile so the ledger row
+    carries every model that participated in the verdict — the §13
+    non-negotiable 10 ("every verdict is replayable") demands the
+    persisted row name the model ids so a downstream auditor can pin
+    the exact backend that produced the calibrated confidence. The
+    rollup uses canonical short names rather than per-call snapshots:
+    each profile pins one judge, one NLI checker, one task client.
+    """
+    if profile == "heuristic":
+        # Heuristic profile is fully local with no LLM seam — record
+        # the deterministic substrate ids so the rollup is non-empty.
+        return {
+            "task_client": "heuristic",
+            "judge": "heuristic",
+            "nli": "heuristic",
+            "embedder": "hash",
+        }
+    if profile == "thrifty":
+        return {
+            "task_client": "ollama/qwen2.5:7b-instruct-q4_K_M",
+            "judge": "ollama/qwen2.5:7b-instruct-q4_K_M",
+            "nli": "deberta-v3-large-mnli",
+            "embedder": "ollama/bge-m3",
+        }
+    # production
+    return {
+        "task_client": "anthropic/claude-opus-4-7",
+        "judge": "anthropic/claude-opus-4-7",
+        "nli": "deberta-v3-large-mnli",
+        "embedder": "ollama/bge-m3",
+    }
+
+
+def _append_to_ledger(
+    *,
+    config: Config,
+    operation: str,
+    workspace_id: str,
+    inputs: dict[str, object],
+    output: dict[str, object],
+    calibrated_confidence: float,
+    model_versions: dict[str, str],
+) -> None:
+    """Persist one verdict row to `<runs_path>/ledger.db`.
+
+    The append is silent: errors hitting the SQLite layer abort the
+    CLI invocation rather than swallowing them, so a corrupted ledger
+    is loud (§13 non-negotiable 3 — no silent no-ops).
+
+    Clamps `calibrated_confidence` into [0, 1] so a per-op derivation
+    that overshoots by a numeric whisker (e.g. a mean of values that
+    each round to 1.0) does not trip the `UnitInterval` validator.
+    """
+    from ctrldoc.orch.ledger import LedgerAppendRequest, VerdictLedger
+
+    clamped = min(max(float(calibrated_confidence), 0.0), 1.0)
+    with _open_ledger_store(config) as store:
+        ledger = VerdictLedger(store=store)
+        ledger.append(
+            LedgerAppendRequest(
+                workspace_id=workspace_id,
+                operation=operation,
+                inputs=inputs,
+                output=output,
+                calibrated_confidence=clamped,
+                model_versions=model_versions,
+            )
+        )
+
+
+def _mean_or_default(values: list[float], default: float) -> float:
+    """Arithmetic mean over a possibly-empty list, with a fallback."""
+    if not values:
+        return default
+    return sum(values) / len(values)
 
 
 # --- global callback ---
@@ -683,6 +781,28 @@ def qa(
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
     (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
+    _append_to_ledger(
+        config=config,
+        operation="qa",
+        workspace_id=_DEFAULT_LEDGER_WORKSPACE_ID,
+        inputs={
+            "query": query,
+            "target_path": str(target_path),
+            "target_doc_id": effective_doc_id,
+            "target_doc_hash": doc_hash,
+            "profile": state.profile,
+        },
+        output={
+            "answer": report.answer,
+            "claims": payload["claims"],
+        },
+        calibrated_confidence=_mean_or_default(
+            [float(c.confidence) for c in report.claims],
+            default=_HEURISTIC_CONFIDENCE,
+        ),
+        model_versions=_model_versions_for_profile(state.profile),
+    )
+
     _emit_output(state, markdown=markdown, payload=payload)
 
 
@@ -876,6 +996,29 @@ def audit(
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
     (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
+    _append_to_ledger(
+        config=config,
+        operation="audit",
+        workspace_id=_DEFAULT_LEDGER_WORKSPACE_ID,
+        inputs={
+            "checklist_path": str(checklist_path),
+            "target_path": str(target_path),
+            "target_doc_id": effective_doc_id,
+            "target_doc_hash": doc_hash,
+            "profile": state.profile,
+            "items_total": len(items),
+        },
+        output={
+            "verdicts": payload["verdicts"],
+            "summary": payload["summary"],
+        },
+        calibrated_confidence=_mean_or_default(
+            [float(v.confidence) for v in report.verdicts],
+            default=_HEURISTIC_CONFIDENCE,
+        ),
+        model_versions=_model_versions_for_profile(state.profile),
+    )
+
     _emit_output(state, markdown=markdown, payload=payload)
 
 
@@ -1058,6 +1201,28 @@ def review(
 
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
     (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _append_to_ledger(
+        config=config,
+        operation="review",
+        workspace_id=_DEFAULT_LEDGER_WORKSPACE_ID,
+        inputs={
+            "doc_type": doc_type,
+            "target_path": str(target_path),
+            "target_doc_id": effective_doc_id,
+            "target_doc_hash": doc_hash,
+            "profile": state.profile,
+        },
+        output={
+            "findings": payload["findings"],
+            "narrative": payload["narrative"],
+        },
+        # review emits structured findings without per-finding
+        # confidence; surface the §6.5 heuristic prior so the row
+        # carries a number the replay gate can score against.
+        calibrated_confidence=_HEURISTIC_CONFIDENCE,
+        model_versions=_model_versions_for_profile(state.profile),
+    )
 
     _emit_output(state, markdown=markdown, payload=payload)
 
@@ -1314,6 +1479,28 @@ def map_(
 
     (run_dir / "report.md").write_text(markdown, encoding="utf-8")
     (run_dir / "result.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    _append_to_ledger(
+        config=config,
+        operation="map",
+        workspace_id=_DEFAULT_LEDGER_WORKSPACE_ID,
+        inputs={
+            "target_path": str(target_path),
+            "target_doc_id": effective_doc_id,
+            "target_doc_hash": doc_hash,
+            "profile": state.profile,
+            "max_concepts": max_concepts,
+        },
+        output={
+            "nodes": payload["nodes"],
+            "edges": payload["edges"],
+        },
+        calibrated_confidence=_mean_or_default(
+            [float(e.confidence) for e in graph.edges],
+            default=_HEURISTIC_CONFIDENCE,
+        ),
+        model_versions=_model_versions_for_profile(state.profile),
+    )
 
     _emit_output(state, markdown=markdown, payload=payload)
 
@@ -1770,6 +1957,9 @@ def _dispatch_or_stub(
     tool_name: str,
     raw_input: dict[str, object],
     render_ok: object,
+    ledger_op: str | None = None,
+    ledger_workspace_id: str | None = None,
+    ledger_confidence_fn: object | None = None,
 ) -> None:
     """Run the dispatcher; on `ToolNotImplementedError` emit a structured stub.
 
@@ -1779,10 +1969,19 @@ def _dispatch_or_stub(
     missing; markdown carries a `# ctrldoc — <command>` heading plus a
     short "not implemented" sentence so the user-facing rendering is
     explicit (and never silently no-ops, per §13 non-negotiable 3).
+
+    When `ledger_op` is set, the success path also appends one verdict
+    row to `<runs_path>/ledger.db`. `ledger_workspace_id` defaults to
+    `raw_input["workspace_id"]` when present, else
+    `_DEFAULT_LEDGER_WORKSPACE_ID`. `ledger_confidence_fn(result) ->
+    float` derives the scalar confidence; when `None`, the §6.5
+    heuristic prior is used. The not-implemented path never touches
+    the ledger so stub envelopes do not pollute the audit trail.
     """
     from ctrldoc.orch.tools import ToolNotImplementedError
 
-    dispatcher = _build_dispatcher(_load_config(state.config_path))
+    config = _load_config(state.config_path)
+    dispatcher = _build_dispatcher(config)
     try:
         result = dispatcher.dispatch(tool_name=tool_name, raw_input=raw_input)  # type: ignore[attr-defined]
     except ToolNotImplementedError as exc:
@@ -1801,6 +2000,25 @@ def _dispatch_or_stub(
         _emit_output(state, markdown=markdown, payload=payload)
         return
     markdown, ok_payload = render_ok(result)  # type: ignore[operator]
+    if ledger_op is not None:
+        ws_id = ledger_workspace_id
+        if ws_id is None:
+            raw_ws = raw_input.get("workspace_id")
+            ws_id = str(raw_ws) if raw_ws else _DEFAULT_LEDGER_WORKSPACE_ID
+        confidence = (
+            float(ledger_confidence_fn(result))  # type: ignore[operator]
+            if ledger_confidence_fn is not None
+            else _HEURISTIC_CONFIDENCE
+        )
+        _append_to_ledger(
+            config=config,
+            operation=ledger_op,
+            workspace_id=ws_id,
+            inputs=dict(raw_input),
+            output=dict(ok_payload),
+            calibrated_confidence=confidence,
+            model_versions=_model_versions_for_profile(state.profile),
+        )
     _emit_output(state, markdown=markdown, payload=ok_payload)
 
 
@@ -1840,12 +2058,26 @@ def compare(
         )
         return md, payload
 
+    def _confidence_fn(result: object) -> float:
+        # compare rows are dicts; some carry a "confidence" key, others
+        # are deterministic Galois-floor verdicts. Average present
+        # confidences; fall back to the §6.5 heuristic prior.
+        report = result.report  # type: ignore[attr-defined]
+        scores = [
+            float(row["confidence"])
+            for row in report.rows
+            if isinstance(row, dict) and "confidence" in row
+        ]
+        return _mean_or_default(scores, default=_HEURISTIC_CONFIDENCE)
+
     _dispatch_or_stub(
         state=state,
         command="compare",
         tool_name="compare",
         raw_input=raw_input,
         render_ok=_render_ok,
+        ledger_op="compare",
+        ledger_confidence_fn=_confidence_fn,
     )
 
 
@@ -1883,12 +2115,19 @@ def coverage(
         )
         return md, payload
 
+    def _confidence_fn(result: object) -> float:
+        report = result.report  # type: ignore[attr-defined]
+        scores = [float(v.calibrated_confidence) for v in report.per_claim]
+        return _mean_or_default(scores, default=_HEURISTIC_CONFIDENCE)
+
     _dispatch_or_stub(
         state=state,
         command="coverage",
         tool_name="coverage",
         raw_input=raw_input,
         render_ok=_render_ok,
+        ledger_op="coverage",
+        ledger_confidence_fn=_confidence_fn,
     )
 
 
@@ -1938,7 +2177,8 @@ def merge(
     # full CLI-shaped dict in so the stub envelope shows `output_path`.
     from ctrldoc.orch.tools import ToolNotImplementedError
 
-    dispatcher = _build_dispatcher(_load_config(state.config_path))
+    config = _load_config(state.config_path)
+    dispatcher = _build_dispatcher(config)
     try:
         result = dispatcher.dispatch(tool_name="merge", raw_input=dispatch_input)  # type: ignore[attr-defined]
     except ToolNotImplementedError as exc:
@@ -1957,6 +2197,18 @@ def merge(
         _emit_output(state, markdown=markdown, payload=stub_payload)
         return
     markdown, ok_payload = _render_ok(result)
+    # merge emits a representative-per-cluster envelope without
+    # per-cluster confidence; the §6.5 heuristic prior surfaces a
+    # number the replay gate can score against.
+    _append_to_ledger(
+        config=config,
+        operation="merge",
+        workspace_id=workspace_id,
+        inputs=dict(raw_input),
+        output=dict(ok_payload),
+        calibrated_confidence=_HEURISTIC_CONFIDENCE,
+        model_versions=_model_versions_for_profile(state.profile),
+    )
     _emit_output(state, markdown=markdown, payload=ok_payload)
 
 
@@ -1997,12 +2249,19 @@ def list_check(
         md = f"# ctrldoc — list-check\n\n- **Doc**: `{doc_id}`\n- **Items**: {len(verdicts)}\n"
         return md, payload
 
+    def _confidence_fn(result: object) -> float:
+        scores = [float(v.confidence) for v in result.verdicts]  # type: ignore[attr-defined]
+        return _mean_or_default(scores, default=_HEURISTIC_CONFIDENCE)
+
     _dispatch_or_stub(
         state=state,
         command="list-check",
         tool_name="list_check",
         raw_input=raw_input,
         render_ok=_render_ok,
+        ledger_op="list_check",
+        ledger_workspace_id=_DEFAULT_LEDGER_WORKSPACE_ID,
+        ledger_confidence_fn=_confidence_fn,
     )
 
 
