@@ -22,8 +22,9 @@ SPEC-REF: §5.4 (analytical review), §6 (CLI)
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ctrldoc.assembler import CacheablePrefix
 from ctrldoc.cli_audit import BundleRetriever
@@ -45,13 +46,39 @@ _LENS_SWEEPER_SYSTEM_PROMPT = (
 
 
 class _SweptFinding(BaseModel):
-    """One row the model emits per finding."""
+    """One row the model emits per finding.
+
+    `citation_chunk_id` is permissively typed at validation time:
+    Anthropic emits a bare string; Qwen2.5-Instruct under Ollama
+    `format="json"` sometimes wraps the same value in a single-element
+    list. The validator coerces the single-element list to its element
+    so both backends parse cleanly; a list of zero or two-or-more
+    elements is rejected loudly so multi-citation drift cannot silently
+    collapse to the first id (every finding must cite exactly one
+    chunk).
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     claim: str
     severity: SeverityLiteral
     citation_chunk_id: str
+
+    @field_validator("citation_chunk_id", mode="before")
+    @classmethod
+    def _coerce_single_element_list(cls, value: Any) -> Any:
+        if isinstance(value, list):
+            if len(value) != 1:
+                raise ValueError(
+                    f"citation_chunk_id list must contain exactly one element; got {len(value)}"
+                )
+            (only,) = value
+            if not isinstance(only, str):
+                raise ValueError(
+                    f"citation_chunk_id list element must be a string; got {type(only).__name__}"
+                )
+            return only
+        return value
 
 
 class _SweptFindings(BaseModel):
