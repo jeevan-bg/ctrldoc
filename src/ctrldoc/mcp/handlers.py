@@ -134,15 +134,44 @@ union-find + Galois-join reduction over the union — the output's
 representative claim id per cluster (the first member id in input
 order, matching the engine's deterministic tiebreak).
 
-The final wave (`entails` / `qa` / `map`) lands in S-161; each will
-plug in via the same `register_handler` seam — this module does not
-own those.
+LLM-backed handlers
+-------------------
+
+* ``entails`` → uses the same `NLIScorer` dep as the OT wave, but
+  routes through `claim_lookup` (the structural-floor dep) to resolve
+  the schema's two `claim_id` strings into `ClaimTuple` rows. Each
+  side renders to natural language via
+  :func:`render_claim_text`, the scorer scores `(premise=A,
+  hypothesis=B)` exactly once, and the handler surfaces argmax label
+  as `verdict` plus top-label mass as `confidence`. The §6.5
+  calibration layer enters by wrapping the scorer in
+  `CalibratedNLIScorer` upstream — the handler stays agnostic so
+  callers swap layers without touching it.
+
+* ``qa`` → wraps an injected `QARunner` closure (signature
+  `(target, query) -> AnswerWithTrace`). The closure owns the full
+  QA pipeline (retrieval, generation, decomposition, verification,
+  citation surfacing) so the handlers module stays free of those
+  imports. The closure is gated on the LLM profile being available
+  — production wires it through Anthropic, thrifty wires it through
+  Ollama with ``format=json`` (the fence-tolerant parser from S-149
+  + S-150 is the live JSON-mode contract).
+
+* ``map`` → typed-edge graph rendering. The handler resolves the
+  input's `doc_id` to its persisted `TypedEdge` rows via
+  `typed_edges_for_doc_supplier` (typically wraps
+  `SQLiteStore.iter_typed_edges_for_doc(doc_id)`), renders them as a
+  deterministic Mermaid `graph LR` block, and surfaces the node ids
+  + edge count alongside the rendered string. Empty doc surfaces a
+  valid empty-graph placeholder so the host renders cleanly without
+  special-casing the empty path.
 
 SPEC-REF: §6.10 (tool-using orchestrator), §11 (MCP server)
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -156,6 +185,7 @@ from ctrldoc.eval.merge import InputClaim, MergedCluster
 from ctrldoc.extract.claim_persistence import claim_to_tuple
 from ctrldoc.extract.galois import claim_subsumption
 from ctrldoc.extract.isotonic_calibration import fit_per_backend_ece
+from ctrldoc.extract.tier2_nli import render_claim_text
 from ctrldoc.models_v1 import (
     Claim,
     Concept,
@@ -187,6 +217,7 @@ from ctrldoc.ops.merge import (
 )
 from ctrldoc.ops.transport import TransportProblem, min_cost_transport
 from ctrldoc.orch.tools import (
+    AnswerWithTrace,
     CalibrationInput,
     CalibrationOutput,
     CompareInput,
@@ -194,6 +225,8 @@ from ctrldoc.orch.tools import (
     CompareReport,
     CoverageInput,
     CoverageOutput,
+    EntailsInput,
+    EntailsOutput,
     GetClaimInput,
     GetClaimOutput,
     ListCheckInput,
@@ -202,11 +235,15 @@ from ctrldoc.orch.tools import (
     ListCheckVerdict,
     LookupConceptInput,
     LookupConceptOutput,
+    MapInput,
+    MapOutput,
     MergedDoc,
     MergeInput,
     MergeOutput,
     OptimalTransportInput,
     OptimalTransportOutput,
+    QAInput,
+    QAOutput,
     SubsumesInput,
     SubsumesOutput,
     ToolDispatcher,
@@ -290,6 +327,33 @@ faithful "no claims for this doc" answer); the handler treats that
 case as the all-Missing degenerate path.
 """
 
+TypedEdgesForDocSupplier = Callable[[str], Sequence[TypedEdge]]
+"""Yield the persisted `TypedEdge` rows scoped to one `doc_id`.
+
+Called once per `map` invocation. Implementations may pull from a
+SQLite store's `iter_typed_edges_for_doc(doc_id)` method, an
+in-memory dict, or any other adapter — the handler treats the result
+as opaque and renders it as a Mermaid `graph LR` block. An unknown
+doc id should surface as an empty sequence; the handler renders the
+empty-graph placeholder rather than refusing.
+"""
+
+QARunner = Callable[[str, str], AnswerWithTrace]
+"""Run the §6.10 `qa(target, query)` op end-to-end and return its reply.
+
+The closure owns the full QA pipeline — retrieval, generation,
+decomposition, verification, citation surfacing — and renders its
+result as a complete `AnswerWithTrace` ready for the §6.10 output
+schema. Keeping the contract opaque here means the handlers module
+does not have to pull in `ops.qa.QAPlaybook`'s transitive deps (task
+runner, decomposer, verifier, evidence pack rendering). The slice
+that owns the runtime wiring constructs the closure with the active
+LLM profile (Anthropic for production, Ollama with ``format=json``
+for thrifty); when no profile is available the closure is left
+unset and the handler stays unwired so the dispatcher refuses the
+call (§13 non-negotiable 3).
+"""
+
 
 @dataclass(frozen=True)
 class MCPHandlerDeps:
@@ -334,7 +398,25 @@ class MCPHandlerDeps:
     """If set together with `claims_for_doc_supplier`, the OT-backed
     `coverage` and `list_check` handlers consume this scorer as the
     §6.6 entailment backend. Either dep missing leaves both tools
-    unwired."""
+    unwired. When `claim_lookup` is also set, the LLM-backed
+    `entails` handler wires onto the same scorer (typically the
+    Tier-2 DeBERTa backend, optionally wrapped in
+    `CalibratedNLIScorer` for the §6.5 ECE release gate)."""
+
+    qa_runner: QARunner | None = None
+    """If set, the LLM-backed `qa` handler dispatches every call
+    through this closure. The closure owns the full QA pipeline
+    (retrieval, generation, decomposition, verification) so the
+    handlers module stays free of those imports. Gated on the LLM
+    profile being available — the slice that owns the runtime wiring
+    builds the closure with Anthropic (production) or Ollama with
+    ``format=json`` (thrifty). Absent ⇒ `qa` stays unwired."""
+
+    typed_edges_for_doc_supplier: TypedEdgesForDocSupplier | None = None
+    """If set, the `map` handler resolves the input's `doc_id` to its
+    persisted `TypedEdge` rows through this function. Implementations
+    typically wrap `SQLiteStore.iter_typed_edges_for_doc(doc_id)`.
+    Absent ⇒ `map` stays unwired."""
 
 
 # ---------------------------------------------------------------------------
@@ -983,6 +1065,173 @@ def _make_merge_handler(
     return _handler
 
 
+# ---------------------------------------------------------------------------
+# LLM-backed handlers — `entails`, `qa`, `map` (the final §6.10 wave)
+# ---------------------------------------------------------------------------
+
+
+def _make_entails_handler(
+    *,
+    claim_lookup: ClaimLookup,
+    nli_scorer: NLIScorer,
+) -> ToolHandler:
+    """Bind `nli_scorer.score` to a per-id claim lookup.
+
+    Resolves `claim_a_id` → premise and `claim_b_id` → hypothesis (the
+    `entails(claim_a, claim_b)` schema is directional — premise first,
+    hypothesis second), renders each tuple as natural-language surface
+    via :func:`render_claim_text` so the cross-encoder sees a sentence
+    rather than the raw tuple, scores the pair exactly once, and
+    surfaces the argmax label as `verdict` plus the top-label mass as
+    `confidence`. The §6.5 calibration layer enters by wrapping the
+    injected scorer in `CalibratedNLIScorer` upstream — the handler is
+    deliberately agnostic to whether it received a raw or calibrated
+    scorer, so callers swap layers without touching this code path.
+    """
+
+    def _handler(inp: BaseModel) -> EntailsOutput:
+        assert isinstance(inp, EntailsInput), inp
+        premise_claim = claim_lookup(inp.claim_a_id)
+        hypothesis_claim = claim_lookup(inp.claim_b_id)
+        premise = render_claim_text(premise_claim)
+        hypothesis = render_claim_text(hypothesis_claim)
+        score = nli_scorer.score(premise=premise, hypothesis=hypothesis)
+        return EntailsOutput(
+            verdict=score.argmax_label(),
+            confidence=score.top_confidence(),
+        )
+
+    return _handler
+
+
+def _make_qa_handler(qa_runner: QARunner) -> ToolHandler:
+    """Bind the injected QA closure to the §6.10 `qa` schema.
+
+    The closure receives the validated `(target, query)` strings and
+    returns the full `AnswerWithTrace` — the handler simply lifts it
+    into the `QAOutput` envelope. Keeping the runner opaque means
+    profile-specific wiring (Anthropic vs Ollama, fence-tolerant
+    parser, ``format=json``) lives at the construction site and never
+    leaks into this module's import graph.
+    """
+
+    def _handler(inp: BaseModel) -> QAOutput:
+        assert isinstance(inp, QAInput), inp
+        reply = qa_runner(inp.target, inp.query)
+        return QAOutput(reply=reply)
+
+    return _handler
+
+
+def _make_map_handler(
+    typed_edges_for_doc_supplier: TypedEdgesForDocSupplier,
+) -> ToolHandler:
+    """Bind `iter_typed_edges_for_doc` to the §6.10 `map` schema.
+
+    Resolves the input's `doc_id` to its persisted `TypedEdge` rows,
+    extracts the set of distinct endpoint node ids in deterministic
+    order, renders a Mermaid `graph LR` block (one node declaration
+    per endpoint, one labelled arrow per edge in `(type, src, dst)`
+    order), and surfaces the node list + edge count alongside the
+    rendered string. The schema's `filters` slot is accepted as a
+    verbatim passthrough at this layer — richer filter semantics
+    (concept primitive type, edge type allowlist, section scope) land
+    with later slices that build the filter alphabet; here the
+    forward-compatible no-op keeps the surface stable.
+
+    Empty edge list ⇒ a structurally valid Mermaid placeholder so the
+    host renders cleanly without special-casing the empty path.
+    """
+
+    def _handler(inp: BaseModel) -> MapOutput:
+        assert isinstance(inp, MapInput), inp
+        edges = list(typed_edges_for_doc_supplier(inp.doc_id))
+        # Deterministic edge ordering. The store already returns edges
+        # in `(type, src_id, dst_id)` order, but a Python-side sort
+        # keeps the renderer independent of any future store reorder.
+        edges.sort(key=lambda e: (e.type, e.src_id, e.dst_id))
+
+        # Distinct endpoints in lexicographic order so the node block
+        # is byte-deterministic across runs. Two-pass walk over
+        # `(src, dst)` collects every node mentioned by any edge.
+        node_set: set[str] = set()
+        for e in edges:
+            node_set.add(e.src_id)
+            node_set.add(e.dst_id)
+        node_ids = sorted(node_set)
+
+        mermaid = _render_typed_edges_mermaid(doc_id=inp.doc_id, edges=edges, node_ids=node_ids)
+        return MapOutput(
+            mermaid=mermaid,
+            node_ids=node_ids,
+            edge_count=len(edges),
+        )
+
+    return _handler
+
+
+def _render_typed_edges_mermaid(
+    *,
+    doc_id: str,
+    edges: Sequence[TypedEdge],
+    node_ids: Sequence[str],
+) -> str:
+    """Render a typed-edge list as a Mermaid `graph LR` block.
+
+    Each node id slugs to a Mermaid-safe identifier via
+    :func:`_mermaid_id` (Mermaid identifiers must match
+    ``[A-Za-z][\\w]*``); the original id surfaces verbatim inside the
+    node's label so the host has the raw handle for click-through.
+    Edge arrows carry the typed-edge `type` as their label so the
+    rendering preserves the §6.10 schema literally. Empty input
+    surfaces a valid empty-graph placeholder node so downstream
+    Markdown renderers do not crash on a blank fenced block.
+
+    The leading comment line ``%% doc_id: <id>`` is informational —
+    Mermaid treats `%%` as a comment so it does not affect layout —
+    and gives the host a stable handle to the originating doc inside
+    the rendered surface itself.
+    """
+    lines: list[str] = []
+    lines.append(f"%% doc_id: {doc_id}")
+    lines.append("graph LR")
+    if not node_ids:
+        lines.append('    _empty["(no typed edges)"]')
+    else:
+        for node_id in node_ids:
+            safe_id = _mermaid_id(node_id)
+            safe_label = node_id.replace('"', "'")
+            lines.append(f'    {safe_id}["{safe_label}"]')
+        for edge in edges:
+            src = _mermaid_id(edge.src_id)
+            dst = _mermaid_id(edge.dst_id)
+            lines.append(f"    {src} -- {edge.type} --> {dst}")
+    return "\n".join(lines)
+
+
+_MERMAID_ID_RE = re.compile(r"[^0-9A-Za-z_]")
+
+
+def _mermaid_id(node_id: str) -> str:
+    """Slug a node id into a Mermaid-safe identifier.
+
+    Mermaid identifiers must match ``[A-Za-z][\\w]*``; anything else
+    is replaced with `_` and a `c_` prefix is added when the first
+    character is not a letter. Mirrors the convention in
+    `ctrldoc.cli_map._mermaid_id` so the two renderers stay
+    consistent.
+    """
+    safe = _MERMAID_ID_RE.sub("_", node_id)
+    if not safe or not safe[0].isalpha():
+        safe = "c_" + safe
+    return safe
+
+
+# ---------------------------------------------------------------------------
+# `calibration` handler — `fit_per_backend_ece` per injected backend
+# ---------------------------------------------------------------------------
+
+
 def _make_calibration_handler(
     calibration_data: CalibrationData | None,
 ) -> ToolHandler:
@@ -1048,11 +1297,17 @@ def register_default_handlers(
       wires only if BOTH ``deps.claims_for_doc_supplier`` and
       ``deps.nli_scorer`` are set. Either dep missing leaves all four
       tools unwired.
+    * ``entails`` — wires only if BOTH ``deps.claim_lookup`` and
+      ``deps.nli_scorer`` are set (Tier-2 NLI over claim-pair lookups).
+    * ``qa`` — wires only if ``deps.qa_runner`` is set. The runner
+      gates on the LLM profile being available (Anthropic for
+      production; Ollama with ``format=json`` for thrifty).
+    * ``map`` — wires only if ``deps.typed_edges_for_doc_supplier``
+      is set (typed-edge → Mermaid renderer).
 
     Re-registering replaces the previous handler (the dispatcher
-    documents this), so callers can layer richer LLM-backed handlers
-    (S-161) on top of this factory's pure-Python + storage-backed +
-    OT-backed floor.
+    documents this), so callers can layer richer handler waves on top
+    of this factory's floor without rebuilding the dispatcher.
     """
     wired: set[str] = set()
 
@@ -1113,6 +1368,27 @@ def register_default_handlers(
             ),
         )
         wired.add("merge")
+
+    if deps.claim_lookup is not None and deps.nli_scorer is not None:
+        dispatcher.register_handler(
+            "entails",
+            _make_entails_handler(
+                claim_lookup=deps.claim_lookup,
+                nli_scorer=deps.nli_scorer,
+            ),
+        )
+        wired.add("entails")
+
+    if deps.qa_runner is not None:
+        dispatcher.register_handler("qa", _make_qa_handler(deps.qa_runner))
+        wired.add("qa")
+
+    if deps.typed_edges_for_doc_supplier is not None:
+        dispatcher.register_handler(
+            "map",
+            _make_map_handler(deps.typed_edges_for_doc_supplier),
+        )
+        wired.add("map")
 
     return frozenset(wired)
 
@@ -1199,6 +1475,8 @@ __all__ = [
     "ClaimsForDocSupplier",
     "ConceptNameLookup",
     "MCPHandlerDeps",
+    "QARunner",
+    "TypedEdgesForDocSupplier",
     "TypedEdgesSupplier",
     "build_store_backed_deps",
     "register_default_handlers",
