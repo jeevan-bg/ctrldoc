@@ -456,8 +456,14 @@ def test_register_default_handlers_wires_ot_handlers_when_deps_set() -> None:
 
 
 @pytest.mark.family_referential_integrity
-def test_register_default_handlers_leaves_remaining_waves_unwired() -> None:
-    """`compare`, `merge`, and the LLM-backed tools must stay unwired here."""
+def test_register_default_handlers_leaves_llm_wave_unwired() -> None:
+    """The LLM-backed tools (`entails` / `map` / `qa`) must stay unwired here.
+
+    `compare` and `merge` joined the OT-backed wave in S-160 — once
+    the supplier and scorer are present they wire alongside `coverage`
+    and `list_check`. The LLM-backed wave (S-161) is what stays
+    unwired at this layer.
+    """
     dispatcher = ToolDispatcher()
     register_default_handlers(
         dispatcher=dispatcher,
@@ -467,8 +473,6 @@ def test_register_default_handlers_leaves_remaining_waves_unwired() -> None:
         ),
     )
     for tool_name, raw in [
-        ("compare", {"workspace_id": "w", "doc_ids": ["a", "b"]}),
-        ("merge", {"workspace_id": "w", "doc_ids": ["a"]}),
         ("entails", {"claim_a_id": "a", "claim_b_id": "b"}),
         ("map", {"doc_id": "d"}),
         ("qa", {"target": "d", "query": "q"}),

@@ -105,10 +105,11 @@ handlers whose dependencies are satisfied:
 * ``get_claim`` — wires only when ``deps.claim_record_lookup`` is set.
 * ``lookup_concept`` — wires only when ``deps.concept_name_lookup`` is set.
 * ``traverse`` — wires only when ``deps.typed_edges_supplier`` is set.
-* ``coverage`` and ``list_check`` — each wires only when both
-  ``deps.claims_for_doc_supplier`` and ``deps.nli_scorer`` are set.
-  Either dep missing leaves the tool unregistered so the dispatcher
-  refuses the call rather than fabricating a verdict.
+* ``coverage`` / ``list_check`` / ``compare`` / ``merge`` — each
+  wires only when both ``deps.claims_for_doc_supplier`` and
+  ``deps.nli_scorer`` are set. Either dep missing leaves all four
+  tools unregistered so the dispatcher refuses the call rather than
+  fabricating a verdict.
 
 The factory returns the `frozenset` of wired tool names so callers
 can log the surface they actually exposed.
@@ -120,10 +121,22 @@ an `MCPHandlerDeps` ready to plug into the dispatcher. The runtime
 cost is linear in the number of per-doc stores; the v1 workspace
 cardinality (handful of docs) makes the scan negligible.
 
-The downstream waves of MCP handlers ship in S-160 (OT-backed:
-``compare`` / ``merge``) and S-161 (LLM-backed: ``entails`` / ``qa``
-/ ``map``). Each will plug in via the same `register_handler` seam —
-this module does not own those.
+The OT-backed `compare` / `merge` handlers reduce to
+:func:`ctrldoc.ops.compare.compare` and
+:func:`ctrldoc.ops.merge.merge` respectively. Compare resolves every
+input `doc_id` to its persisted `Claim` list, forms per-concept
+clusters by matching universal `(subject, predicate, object)`
+triplets across pairs, and emits one row per cluster per `(doc_i,
+doc_j)` pair with `i < j`. Merge resolves every input `doc_id`
+identically, lifts each row into an `InputClaim`, and runs the §6.6
+union-find + Galois-join reduction over the union — the output's
+`MergedDoc` envelope carries one `cluster_id` per cluster and one
+representative claim id per cluster (the first member id in input
+order, matching the engine's deterministic tiebreak).
+
+The final wave (`entails` / `qa` / `map`) lands in S-161; each will
+plug in via the same `register_handler` seam — this module does not
+own those.
 
 SPEC-REF: §6.10 (tool-using orchestrator), §11 (MCP server)
 """
@@ -133,10 +146,13 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
-from ctrldoc.eval.claim_extraction import ClaimTuple
+from ctrldoc.eval.claim_extraction import ClaimTuple, DocTypeLiteral
+from ctrldoc.eval.compare import ConceptComparisonInput
+from ctrldoc.eval.merge import InputClaim, MergedCluster
 from ctrldoc.extract.claim_persistence import claim_to_tuple
 from ctrldoc.extract.galois import claim_subsumption
 from ctrldoc.extract.isotonic_calibration import fit_per_backend_ece
@@ -150,6 +166,10 @@ from ctrldoc.models_v1 import (
     TypedEdge,
     VerdictLiteral,
 )
+from ctrldoc.ops.compare import CompareConfig
+from ctrldoc.ops.compare import (
+    compare as ops_compare,
+)
 from ctrldoc.ops.coverage import (
     CoverageConfig,
     CoverageResult,
@@ -161,10 +181,17 @@ from ctrldoc.ops.coverage import (
 from ctrldoc.ops.coverage import (
     list_check as ops_list_check,
 )
+from ctrldoc.ops.merge import MergeConfig
+from ctrldoc.ops.merge import (
+    merge as ops_merge,
+)
 from ctrldoc.ops.transport import TransportProblem, min_cost_transport
 from ctrldoc.orch.tools import (
     CalibrationInput,
     CalibrationOutput,
+    CompareInput,
+    CompareOutput,
+    CompareReport,
     CoverageInput,
     CoverageOutput,
     GetClaimInput,
@@ -175,6 +202,9 @@ from ctrldoc.orch.tools import (
     ListCheckVerdict,
     LookupConceptInput,
     LookupConceptOutput,
+    MergedDoc,
+    MergeInput,
+    MergeOutput,
     OptimalTransportInput,
     OptimalTransportOutput,
     SubsumesInput,
@@ -694,6 +724,265 @@ def _make_list_check_handler(
     return _handler
 
 
+# ---------------------------------------------------------------------------
+# OT-backed `compare` / `merge` handlers — §6.6 transport reduction
+# ---------------------------------------------------------------------------
+
+
+def _claims_to_svo_key(claim: Claim) -> tuple[str, str, str]:
+    """Cluster key over the universal `(subject, predicate, object)` triplet.
+
+    Two persisted claims with identical SVO from different docs form
+    one §6.6 compare cluster — modality / qualifier / polarity
+    differences then surface as StrengthA / StrengthB via the Galois
+    floor. Claims whose SVO is not shared by the other doc form a Gap
+    singleton. Empty subject / object fields collapse to the empty
+    string (the `claim_to_tuple` convention) so the key remains
+    well-typed even for degenerate persisted rows.
+    """
+    return (claim.subject or "", claim.predicate, claim.object or "")
+
+
+def _build_compare_pair_rows(
+    *,
+    a_doc_id: str,
+    b_doc_id: str,
+    a_claims: Sequence[Claim],
+    b_claims: Sequence[Claim],
+    scorer: NLIScorer,
+) -> list[dict[str, Any]]:
+    """One row per cluster across the doc pair, in deterministic order.
+
+    Build the per-cluster `ConceptComparisonInput` list keyed on the
+    universal SVO triplet. Pairs present in both docs surface as a
+    two-sided cluster (the Galois / NLI fallback decides StrengthA vs
+    StrengthB); pairs present in only one doc surface as a one-sided
+    Gap cluster. Cluster order is fixed by the union of SVO keys in
+    `a_claims` order followed by `b_claims` order — that guarantees
+    byte-deterministic rows across runs even when the underlying dicts
+    iterate differently.
+    """
+    a_by_key: dict[tuple[str, str, str], Claim] = {}
+    a_order: list[tuple[str, str, str]] = []
+    for c in a_claims:
+        key = _claims_to_svo_key(c)
+        # First-claim-with-this-key wins — matches the eval substrate's
+        # deterministic input-order tiebreak (`ops.compare` itself does
+        # not collapse intra-doc duplicates, so the first persisted row
+        # is the canonical one for the cluster).
+        if key not in a_by_key:
+            a_by_key[key] = c
+            a_order.append(key)
+    b_by_key: dict[tuple[str, str, str], Claim] = {}
+    b_order: list[tuple[str, str, str]] = []
+    for c in b_claims:
+        key = _claims_to_svo_key(c)
+        if key not in b_by_key:
+            b_by_key[key] = c
+            b_order.append(key)
+
+    # Union of keys in deterministic order — a's first, then b's
+    # additions. The eval substrate's cluster ids are caller-supplied;
+    # here we synthesise stable ids from the pair label and a 0-based
+    # ordinal so re-runs over identical inputs land identical rows.
+    seen_keys: set[tuple[str, str, str]] = set()
+    cluster_keys: list[tuple[str, str, str]] = []
+    for key in a_order:
+        if key not in seen_keys:
+            seen_keys.add(key)
+            cluster_keys.append(key)
+    for key in b_order:
+        if key not in seen_keys:
+            seen_keys.add(key)
+            cluster_keys.append(key)
+
+    clusters: list[ConceptComparisonInput] = []
+    paired_claim_ids: list[tuple[str | None, str | None]] = []
+    for ordinal, key in enumerate(cluster_keys):
+        a_claim = a_by_key.get(key)
+        b_claim = b_by_key.get(key)
+        clusters.append(
+            ConceptComparisonInput(
+                id=f"cluster-{a_doc_id}-{b_doc_id}-{ordinal}",
+                # Label is the rendered SVO triplet so the host has a
+                # human-readable handle without re-rendering.
+                label=" ".join(p for p in key if p),
+                a_claim=claim_to_tuple(a_claim) if a_claim is not None else None,
+                b_claim=claim_to_tuple(b_claim) if b_claim is not None else None,
+            )
+        )
+        paired_claim_ids.append(
+            (
+                a_claim.id if a_claim is not None else None,
+                b_claim.id if b_claim is not None else None,
+            )
+        )
+
+    if not clusters:
+        return []
+
+    result = ops_compare(clusters=clusters, scorer=scorer, config=CompareConfig())
+    rows: list[dict[str, Any]] = []
+    for cluster, verdict, (a_id, b_id) in zip(
+        clusters, result.verdicts, paired_claim_ids, strict=True
+    ):
+        row: dict[str, Any] = {
+            "cluster_id": cluster.id,
+            "label": cluster.label,
+            "verdict": verdict,
+            "a_doc_id": a_doc_id,
+            "b_doc_id": b_doc_id,
+        }
+        if a_id is not None:
+            row["a_claim_id"] = a_id
+        if b_id is not None:
+            row["b_claim_id"] = b_id
+        rows.append(row)
+    return rows
+
+
+def _make_compare_handler(
+    *,
+    claims_for_doc_supplier: ClaimsForDocSupplier,
+    nli_scorer: NLIScorer,
+) -> ToolHandler:
+    """Bind `ops.compare.compare` to the §6.10 `compare` schema.
+
+    Resolves every `doc_id` in the input to its persisted `Claim` list,
+    forms per-concept clusters by matching universal SVO triplets, and
+    runs the §6.6 reduction per `(doc_i, doc_j)` pair with `i < j`. For
+    two docs the row set is the direct reduction; for `N > 2` docs the
+    rows surface pairwise comparisons in declaration order.
+    """
+
+    def _handler(inp: BaseModel) -> CompareOutput:
+        assert isinstance(inp, CompareInput), inp
+        doc_ids = list(inp.doc_ids)
+        per_doc_claims: dict[str, list[Claim]] = {
+            doc_id: list(claims_for_doc_supplier(doc_id)) for doc_id in doc_ids
+        }
+        rows: list[dict[str, Any]] = []
+        for i in range(len(doc_ids)):
+            for j in range(i + 1, len(doc_ids)):
+                rows.extend(
+                    _build_compare_pair_rows(
+                        a_doc_id=doc_ids[i],
+                        b_doc_id=doc_ids[j],
+                        a_claims=per_doc_claims[doc_ids[i]],
+                        b_claims=per_doc_claims[doc_ids[j]],
+                        scorer=nli_scorer,
+                    )
+                )
+        report = CompareReport(workspace_id=inp.workspace_id, doc_ids=doc_ids, rows=rows)
+        return CompareOutput(report=report)
+
+    return _handler
+
+
+# Default `doc_type` slot stamped on every `InputClaim` the §6.6 merge
+# engine consumes. The persisted `Claim` row (§7) does not carry a
+# doc-type tag, but `InputClaim` enforces a `DocTypeLiteral` for
+# schema completeness; the engine itself never reads the slot — its
+# union-find + Galois-join reduction keys on the claim tuple alone.
+_MERGE_DEFAULT_DOC_TYPE: DocTypeLiteral = "spec"
+
+
+def _build_merge_input_claims(
+    doc_id_to_claims: Mapping[str, Sequence[Claim]],
+    doc_ids: Sequence[str],
+) -> list[InputClaim]:
+    """Lift persisted `Claim` rows into `InputClaim` rows for the §6.6 engine.
+
+    Order is `(doc_id_position, intra-doc input order)` so the cluster
+    member ordering the engine emits is stable across runs.
+    """
+    inputs: list[InputClaim] = []
+    for doc_id in doc_ids:
+        for claim in doc_id_to_claims.get(doc_id, ()):
+            inputs.append(
+                InputClaim(
+                    id=claim.id,
+                    doc_id=doc_id,
+                    doc_type=_MERGE_DEFAULT_DOC_TYPE,
+                    claim=claim_to_tuple(claim),
+                )
+            )
+    return inputs
+
+
+def _build_merge_output_clusters_for_invariant(
+    *,
+    doc_id_to_claims: Mapping[str, Sequence[Claim]],
+    doc_ids: Sequence[str],
+    nli_scorer: NLIScorer,
+) -> list[MergedCluster]:
+    """Test seam: re-run the §6.6 merge engine and surface its
+    `MergedCluster` view so callers can assert the §13 loss invariant
+    against the persisted member sets.
+
+    Kept module-private; only the handler's release-gate test imports
+    it. The actual `MergeOutput` envelope the MCP handler surfaces is
+    the §10 schema (cluster ids + representative ids) — the full
+    cluster shape stays internal to avoid leaking the engine's
+    `MergedCluster` model out of the §6.10 surface.
+    """
+    inputs = _build_merge_input_claims(doc_id_to_claims, doc_ids)
+    if not inputs:
+        return []
+    result = ops_merge(input_claims=inputs, scorer=nli_scorer, config=MergeConfig())
+    return list(result.output.clusters)
+
+
+def _make_merge_handler(
+    *,
+    claims_for_doc_supplier: ClaimsForDocSupplier,
+    nli_scorer: NLIScorer,
+) -> ToolHandler:
+    """Bind `ops.merge.merge` to the §6.10 `merge` schema.
+
+    Resolves every `doc_id` in the input to its persisted `Claim`
+    list, lifts each row into an `InputClaim`, and runs the §6.6
+    union-find + Galois-join reduction over the union. Output is a
+    `MergedDoc` carrying one `cluster_id` per cluster and one
+    representative claim id per cluster — the first member id in
+    input order, matching the engine's deterministic input-order
+    tiebreak for the Galois-join surface representative.
+    """
+
+    def _handler(inp: BaseModel) -> MergeOutput:
+        assert isinstance(inp, MergeInput), inp
+        doc_ids = list(inp.doc_ids)
+        per_doc_claims: dict[str, list[Claim]] = {
+            doc_id: list(claims_for_doc_supplier(doc_id)) for doc_id in doc_ids
+        }
+        inputs = _build_merge_input_claims(per_doc_claims, doc_ids)
+        if not inputs:
+            merged = MergedDoc(
+                workspace_id=inp.workspace_id,
+                cluster_ids=[],
+                representative_claim_ids=[],
+            )
+            return MergeOutput(merged=merged)
+        result = ops_merge(input_claims=inputs, scorer=nli_scorer, config=MergeConfig())
+        cluster_ids: list[str] = []
+        representative_claim_ids: list[str] = []
+        for cluster in result.output.clusters:
+            cluster_ids.append(cluster.id)
+            # First member id is the deterministic input-order
+            # representative — `MergedCluster.member_claim_ids` is
+            # ordered by input position, so member_claim_ids[0] is
+            # the canonical pick.
+            representative_claim_ids.append(cluster.member_claim_ids[0])
+        merged = MergedDoc(
+            workspace_id=inp.workspace_id,
+            cluster_ids=cluster_ids,
+            representative_claim_ids=representative_claim_ids,
+        )
+        return MergeOutput(merged=merged)
+
+    return _handler
+
+
 def _make_calibration_handler(
     calibration_data: CalibrationData | None,
 ) -> ToolHandler:
@@ -755,9 +1044,10 @@ def register_default_handlers(
     * ``get_claim`` — wires only if ``deps.claim_record_lookup`` is set.
     * ``lookup_concept`` — wires only if ``deps.concept_name_lookup`` is set.
     * ``traverse`` — wires only if ``deps.typed_edges_supplier`` is set.
-    * ``coverage`` and ``list_check`` — each wires only if BOTH
-      ``deps.claims_for_doc_supplier`` and ``deps.nli_scorer`` are set.
-      Either dep missing leaves both tools unwired.
+    * ``coverage`` / ``list_check`` / ``compare`` / ``merge`` — each
+      wires only if BOTH ``deps.claims_for_doc_supplier`` and
+      ``deps.nli_scorer`` are set. Either dep missing leaves all four
+      tools unwired.
 
     Re-registering replaces the previous handler (the dispatcher
     documents this), so callers can layer richer LLM-backed handlers
@@ -807,6 +1097,22 @@ def register_default_handlers(
             ),
         )
         wired.add("list_check")
+        dispatcher.register_handler(
+            "compare",
+            _make_compare_handler(
+                claims_for_doc_supplier=deps.claims_for_doc_supplier,
+                nli_scorer=deps.nli_scorer,
+            ),
+        )
+        wired.add("compare")
+        dispatcher.register_handler(
+            "merge",
+            _make_merge_handler(
+                claims_for_doc_supplier=deps.claims_for_doc_supplier,
+                nli_scorer=deps.nli_scorer,
+            ),
+        )
+        wired.add("merge")
 
     return frozenset(wired)
 
